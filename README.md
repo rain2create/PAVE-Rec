@@ -127,8 +127,12 @@ PAVE-Rec/
 │   ├── Intro.md
 │   ├── 01_dynamic_hybrid_user_memory.md
 │   ├── ...
-│   ├── 10_evaluation_and_training_plan.md
-│   └── implementation_roadmap.md
+│   └── 10_evaluation_and_training_plan.md
+│
+├── todo/
+│   ├── README.md
+│   ├── implementation_roadmap.md
+│   └── phase_1_discussion.md
 │
 ├── configs/
 │   ├── base.yaml
@@ -180,7 +184,8 @@ PAVE-Rec/
 implementations；`agent/` 负责编排；`cli/` 只提供可复现实验入口。
 
 `data/`、`artifacts/` 和 `runs/` 中的本地内容默认不进入 Git。具体阶段和
-验收标准见 `docs/implementation_roadmap.md`。
+验收标准见 `todo/implementation_roadmap.md`；当前待确认事项见
+`todo/phase_1_discussion.md`。
 
 ---
 
@@ -314,11 +319,19 @@ final_ranking = reranker.rank(scores)
 - `docs/08_agent_controller.md`
 - `docs/09_offline_preprocessing.md`
 - `docs/10_evaluation_and_training_plan.md`
-- `docs/implementation_roadmap.md`
 
 ---
 
-## 7. 当前明确保留为 TBD 的研究问题
+## 7. 活跃规划 Active Planning
+
+- `todo/implementation_roadmap.md`
+- `todo/phase_1_discussion.md`
+
+`todo/` 中的内容用于逐项讨论，并不自动代表已经确认的研究或实现决策。
+
+---
+
+## 8. 当前明确保留为 TBD 的研究问题
 
 下面这些内容暂时不应该被 Codex 写死：
 

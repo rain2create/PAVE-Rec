@@ -8,6 +8,10 @@
 它不替代 01—10 模块设计文档，也不提前决定其中标记为 `TBD` 的研究问题。
 每个阶段只实现支撑下一阶段所必需的最小能力，并保持研究策略可配置、可替换。
 
+本文件属于活跃规划，不是已经确认的研究设计。当前只推进 Phase 1；其逐项
+讨论和确认状态记录在 `todo/phase_1_discussion.md`。后续 Phase 在进入前分别
+建立自己的 discussion 文件。
+
 ---
 
 ## 2. 总体实施原则
@@ -152,6 +156,11 @@ Completed
 
 本阶段不追求模型效果。
 
+### Research Decision Gate
+
+Phase 1 开始编码前，必须先逐项完成 `todo/phase_1_discussion.md` 中的确认。
+未确认事项只能保留为接口、Mock 或显式 `TBD`，不能根据实现便利自行决定。
+
 ### Step 1 — 定义核心领域对象
 
 至少包括：
@@ -201,7 +210,7 @@ Trace、配置快照和最终结果必须可以稳定序列化。
 - Mock User Memory
 - Mock Initial Ranker
 - In-memory Item/Segment Stores
-- Rule-based Information Need
+- Mock Information Need Estimator
 - Mock Segment Value Model
 - Mock Perceiver
 - Mock Evidence Updater
