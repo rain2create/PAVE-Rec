@@ -72,6 +72,44 @@ class UserMemoryState:
     semantic_profile: str | None
 ```
 
+### Recommendation-facing User Memory View
+
+`UserMemoryState` 是 Memory 模块内部的完整状态。Recommendation State 不直接
+内嵌这个对象，而是保存一个紧凑、只读、可 JSON 序列化的 `UserMemoryView`。
+
+这个 View 至少表达：
+
+```text
+long-term and short-term atom summaries
+stable match signals
+emerging and fading signals
+new/drop/global drift
+memory version and update time
+optional semantic profile
+embedding references
+Long x Short Similarity Matrix reference
+```
+
+单个 atom view 保存 `atom_id`、`text`、`state`、`strength`、`persistence` 和
+可选 `embedding_ref`，不保存 Tensor。Matrix 的紧凑派生信号可以表示为：
+
+```python
+@dataclass
+class PreferenceMatchView:
+    short_atom_id: str
+    best_long_atom_id: str | None
+    similarity: float | None
+    classification: str
+```
+
+Information Need 消费 stable/emerging/fading、match score 和 drift 等派生信号，
+不负责重新提取 atom、重新计算 Matrix 或修改 Memory。未来 learned estimator
+如果确实需要完整 Matrix，可以通过 `similarity_matrix_ref` 从 Memory Store
+加载。
+
+一次 Agent run 内使用固定的 `UserMemoryView`。只有新的真实用户行为触发
+Memory 更新；对候选 segment 的 perception Evidence 不反向修改用户兴趣。
+
 ---
 
 ## 3. Long-term / Short-term Memory

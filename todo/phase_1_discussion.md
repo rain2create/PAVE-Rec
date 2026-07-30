@@ -69,7 +69,7 @@ Pending
 
 ## 3. P1-01 — Recommendation State Contract
 
-Status: `Pending`
+Status: `Confirmed`
 
 这是 Phase 1 第一个需要讨论的 Gate。Recommendation State 是所有运行模块
 共享的中央契约，必须在定义 Schema 和 Controller 前确认。
@@ -158,11 +158,67 @@ Status: `Pending`
 - serialization 规则
 - 各组件可以读取的 State 范围
 
+### P1-01 Decision Record
+
+```text
+Decision ID: P1-01
+Status: Confirmed
+Decision:
+1. RecommendationState 是某一决策时刻的只读完整快照，只能由
+   RecommendationStateBuilder 构造。组件不能原地修改 State；每次
+   perception action 后基于独立的运行时 scores、Evidence/Observation
+   State 和 action counters 重新构造。
+2. CandidateState 保存全部 candidates，并同时保存 initial_score、
+   current_score、initial_rank 和 current_rank。相同 score 使用稳定的
+   item_id 次序打破并列。
+3. Candidate cheap features、segment proxy features 和所有 Tensor/array
+   只通过带版本的 reference 暴露，不直接进入 State。
+4. State 内嵌紧凑、只读、可序列化的 UserMemoryView。它包含 long-term
+   和 short-term atom 摘要、stable/emerging/fading match signals、drift、
+   memory version/update time 和可选 semantic profile；embedding 和原始
+   Long x Short Similarity Matrix 只保存 reference。Information Need 消费
+   Matrix 的派生决策信号，未来 learned implementation 可以按 reference
+   加载完整 Matrix。
+5. Segment Observation 与成功 Evidence 分开表达。每个 segment 在 Phase 1
+   使用 unobserved、succeeded、failed 三种状态；failed action 不自动重试。
+   运行时 Evidence/Observation State 是唯一事实来源，CandidateState 中的
+   observation 和 unobserved 列表都是构造时生成的快照。
+6. Phase 1 不建立多维 Budget 系统，只配置 max_perception_actions。
+   remaining_perception_actions 表示剩余可发起的 perception action 数量。
+   step 从 0 开始，表示本次 run 已发起的 perception action 数量；只有调用
+   Perceiver 才增加 step，失败调用同样增加 step 并消耗一次 action。
+7. Phase 1 的 ranking uncertainty 只保存原始 top1_top2_margin signal。
+   Stop threshold 配置化；更丰富或 learned uncertainty 延后。
+8. RecommendationState 必须完全 JSON serializable，并包含显式
+   schema_version 和 run_id。核心字段不能藏在自由 metadata 中；dataset、
+   feature、component 和 code versions 记录在 run manifest、trace 或带版本
+   reference 中。
+Rationale:
+保持 Agent loop 的状态一致性、确定性、可回放性和模型/存储解耦，同时避免
+将 Phase 1 扩展成真实算法、长上下文或多维成本系统。
+Alternatives considered:
+可变 State、top-k-only State、内嵌 Tensor、通过 Evidence 推断 observed、
+失败自动重试、完整 BudgetState、将原始 Similarity Matrix 直接放入 State。
+Affected schemas/interfaces:
+RecommendationState, CandidateState, UserMemoryView, PreferenceAtomView,
+PreferenceMatchView, EvidenceState, SegmentObservationState,
+RecommendationStateBuilder.
+Affected docs/tests:
+docs/01_dynamic_hybrid_user_memory.md, docs/03_recommendation_state.md,
+docs/07_evidence_score_update.md; P1-02 schemas and P1-09 tests.
+Deferred follow-up:
+P1-03 确认组件最小输入和 Observation ownership；P1-05 确认完整状态机；
+P1-06 确认 stop reason priority；P1-07 确认 trace/replay layout；Phase 4
+讨论真实 MLLM retry/repair、prompt context 和 token/frame/latency cost。
+Confirmed by: User
+Date: 2026-07-30
+```
+
 ---
 
 ## 4. P1-02 — Shared Domain Schemas
 
-Status: `Pending`
+Status: `Confirmed`
 
 在 Recommendation State 确认后，讨论其他公共领域对象。
 
@@ -204,6 +260,55 @@ Status: `Pending`
 - schema 之间的 ownership 关系
 - validation 与 serialization 约定
 - Phase 1 所需的最小 domain implementation
+
+### P1-02 Decision Record
+
+```text
+Decision ID: P1-02
+Status: Confirmed
+Decision:
+1. 公共 domain schema 使用 strict、frozen Pydantic models，并禁止未声明字段。
+2. 所有 user/item/segment/atom/evidence/need/run ID 使用非空 str。
+3. 公共 domain objects 不可变；Updater 返回新对象，内部实现可以使用局部可变
+   数据结构。
+4. 事件时间使用 Unix epoch milliseconds，字段显式命名为 *_at_ms；行为顺序
+   可以另外使用非负 interaction_index。
+5. strength、persistence、confidence 使用 [0, 1]；cosine similarity 使用
+   [-1, 1]；rank 从 1 开始；step/action counters 非负；score 和 segment value
+   只要求为 finite float，不假设是概率，value 可以为负。
+6. None 表示未提供、不可用或尚未计算；空 collection 表示已经计算但结果为空。
+7. domain 中不允许 Tensor、ndarray、model、tokenizer、Store、file handle 或
+   arbitrary Python object。所有大型/模型相关数据使用 ResourceRef；加载后的
+   tensor batch 属于具体模型实现。
+8. 固定状态使用 Enum。PreferenceState 和 ObservationStatus 在 P1-02 定义；
+   StopReason 的值在 P1-06 确认。
+9. 独立持久化的顶层 RecommendationState、AgentStepTrace 和 AgentRunResult
+   带 schema_version。metadata 只能保存非核心 JSON-compatible 扩展字段。
+10. 共享 schema 按 refs、memory、ranking、segments、evidence、state、
+    decisions、trace 和 serialization 分模块维护；domain/__init__.py 只导出
+    稳定公共类型。
+Schema inventory:
+ResourceRef; PreferenceAtomView; PreferenceMatchView; UserMemoryView;
+InitialRankedCandidate; InitialRankingOutput; SegmentMeta; SegmentProxyRef;
+Evidence; SegmentObservationState; ItemEvidenceState; EvidenceState;
+CandidateState; RankingUncertainty; RecommendationState; InformationNeed;
+CandidateSegmentRef; SegmentValueInput; SegmentValue; StopDecision;
+AgentStepTrace; AgentRunResult.
+Rationale:
+以严格、可序列化、不可变的公共契约支持 deterministic replay，并防止模型实现、
+Tensor 或任意 metadata 污染 Agent harness。
+Alternatives considered:
+标准库 dataclass、可变 domain objects、integer-only IDs、模糊 int/float 时间、
+内嵌 Tensor、scores dict + ranking list、任意字符串状态和宽松 extra fields。
+Affected docs/tests:
+docs/00_shared_domain_schemas.md；各模块文档中的 schema 示例；P1-09 schema
+validation/serialization tests。
+Deferred follow-up:
+P1-03 确认接口参数和 ownership；P1-06 确认 StopReason；P1-07 补全
+AgentStepTrace、AgentRunResult 和持久化布局。
+Confirmed by: User
+Date: 2026-07-30
+```
 
 ---
 

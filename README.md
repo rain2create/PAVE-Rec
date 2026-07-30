@@ -309,6 +309,7 @@ final_ranking = reranker.rank(scores)
 ## 6. 模块说明文档 Module Documents
 
 - `docs/Intro.md`
+- `docs/00_shared_domain_schemas.md`
 - `docs/01_dynamic_hybrid_user_memory.md`
 - `docs/02_sasrec_initial_ranking.md`
 - `docs/03_recommendation_state.md`

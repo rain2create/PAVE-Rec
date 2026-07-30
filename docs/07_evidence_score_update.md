@@ -28,12 +28,33 @@ class ItemEvidenceState:
     evidence_list: list[Evidence]
     aggregated_attributes: dict
     evidence_embedding: Tensor | None
+    segment_observations: dict[str, SegmentObservationState]
 
 
 @dataclass
 class EvidenceState:
     items: dict[str, ItemEvidenceState]
 ```
+
+Evidence 和 Segment Observation 是不同概念。Phase 1 的每个 segment 使用：
+
+```text
+unobserved
+succeeded
+failed
+```
+
+`succeeded` 表示已经获得有效的结构化 Evidence；`failed` 表示 Perceiver 已经
+被调用但没有产生有效 Evidence。失败仍消耗一次 perception action，Phase 1
+不自动重试。
+
+运行时 `EvidenceState` 中的 observation records 是唯一事实来源。Segment Store
+只保存静态 metadata；Recommendation State 中的 observation 和 unobserved
+segment 列表都是构造时生成的只读快照。
+
+State 和 Score Updater 只消费轻量结构化 Evidence。原始 MLLM response、完整
+API response、媒体、frame 和 Evidence embedding 存在 artifacts/Store 中，并
+通过 reference 关联；保存这些内容不代表将它们加入 MLLM prompt。
 
 ---
 
