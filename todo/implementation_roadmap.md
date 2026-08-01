@@ -341,15 +341,14 @@ initial ranking
 - 最终 Score Update 架构
 - RL
 
-### 当前实现状态
+### 当前实现状态 — `Completed`
 
-Phase 1 已完成本地实现，包括 strict/frozen schemas、13 个显式组件、Controller、
+Phase 1 已完成实现，包括 strict/frozen schemas、13 个显式组件、Controller、
 配置继承、fixture loader、canonical artifacts、saved-output replay、CLI、golden
 fixtures 和分层测试。本地 pytest、branch coverage 与 Ruff 门已通过；GitHub
-Actions 已配置确认的 Ubuntu Python 3.10/3.12 与 Windows Python 3.12 matrix。
-
-在该 workflow 首次于 GitHub 全部通过前，本路线图不将 Phase 1 标记为最终
-`Completed`；远端 CI 结果是剩余的唯一验收项。
+Actions 的 Ubuntu Python 3.10/3.12 与 Windows Python 3.12 完整矩阵也已在
+2026-08-01 对提交 `6e05edf` 全部通过。Phase 1 Definition of Done 已满足，状态
+正式记为 `Completed`。
 
 ---
 
