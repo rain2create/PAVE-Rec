@@ -135,7 +135,8 @@ Inspect this segment and extract recommendation-relevant evidence.
 Return structured JSON.
 ```
 
-V1 不要直接要求 MLLM 完成整个 ranking decision。
+Phase 4 的第一条真实 MLLM baseline 不要直接要求 MLLM 完成整个 ranking
+decision；Phase 1 不调用真实 MLLM。
 
 ---
 
@@ -159,6 +160,10 @@ class EvidenceParser:
 ---
 
 ## 8. Cost Logging
+
+本节是路线图 Phase 4 接入真实 MLLM 后的要求。Phase 1 的 Mock Perceiver 不增加
+frame/token/latency/cost placeholder 字段，也不把这些字段塞入
+`PerceptionResult`、State 或 Trace。
 
 必须记录：
 

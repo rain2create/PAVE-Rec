@@ -7,7 +7,7 @@
 
 这个模块提供一个 conventional recommender prior，作为后续 Agent 主动感知的起点。
 
-V1 默认：
+第一条真实 Cheap Path（路线图 Phase 3）默认：
 
 ```text
 SASRec
@@ -30,7 +30,7 @@ user_interaction_sequence: list[item_id]
 candidate_ids: list[item_id]
 ```
 
-V1 先以标准 sequential recommendation 为主。
+Phase 3 的第一版先以标准 sequential recommendation 为主。
 
 ---
 
@@ -83,7 +83,7 @@ SASRec 负责：
 当前 candidates 应该怎么排？
 ```
 
-V1 保持两者分离。
+第一条真实实现仍保持两者分离。
 
 不要一开始就把 `PreferenceAtom` 直接融合进 SASRec。
 
@@ -173,7 +173,7 @@ optional hidden-state / sequence-feature reference
 
 ---
 
-## 9. V1 Goal
+## 9. First Real Implementation Goal (Phase 3)
 
 支持：
 
@@ -182,7 +182,8 @@ python scripts/train_sasrec.py
 python -m pave_rec.cli.run_mock --config configs/mock.yaml
 ```
 
-Mock agent 可以直接消费真实 SASRec score。
+进入 Phase 3 后，Mock agent harness 可以在不修改 Controller 的情况下消费真实
+SASRec score。Phase 1 本身仍只实现 MockInitialRanker，不训练真实 SASRec。
 
 ---
 

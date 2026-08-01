@@ -49,19 +49,44 @@ snapshot，不是原始 YAML 的拷贝。
 
 要求：
 
-- 使用稳定的 JSON serialization。
+- 使用下方唯一的 canonical JSON serialization。
 - 明确保留 `null`，不依赖隐式默认值重建配置。
 - 保存最终实际 run ID 和规范化项目相对路径，不保存本机绝对路径。
 - 不保存 API key、token 或其他 secret。
 - replay 读取 resolved config，不解析原始配置文件。
 - 由 P1-08 runner 在 Controller 启动前写入；Controller 和 TraceWriter 都不修改。
 
+### 3.1 Canonical JSON Serialization
+
+Phase 1 的 byte-exact golden 和跨平台 replay 统一使用以下字节 contract：
+
+1. Pydantic objects 先执行
+   `model_dump(mode="json", exclude_none=False)`；resolved config 使用等价的
+   validated JSON-mode payload。
+2. 所有 JSON 使用 UTF-8、无 BOM、`ensure_ascii=False`、`allow_nan=False` 和
+   `sort_keys=True`。
+3. `resolved_config.json` 和 `result.json` 使用 `indent=2`，文件末尾恰好一个
+   `\n`。两者在同一 run directory 内先写临时文件，再原子提交目标文件；不得让
+   半截 JSON 占用正式目标名。
+4. `trace.jsonl` 每条记录使用 compact separators `(",", ":")`，每个 object
+   恰好占一行并以一个 `\n` 结束。实现必须显式写 LF，不能依赖 Windows text-mode
+   newline conversion。
+5. Repository `.gitattributes` 固定 JSON/JSONL/YAML 为 LF，避免 checkout 改写
+   golden bytes。
+6. JSON object keys 由 serializer 排序；tuple/list 的业务顺序由公共 Schema 的
+   canonical ordering、Controller projection 和固定 descriptor role order决定，
+   不能通过 `sort_keys` 替代 collection ordering。
+
+普通运行和 golden test 使用同一个 serializer；测试不能维护第二套“只为通过
+golden”的编码逻辑。
+
 ---
 
 ## 4. Trace Granularity
 
 `trace.jsonl` 每次 decision-loop 进入写一条 `AgentStepTrace`，不是细粒度
-event stream。
+event stream。Controller one-time initialization 内的 declared component failure
+是唯一允许在 decision-loop 之前写入的 terminal step record。
 
 一次 record 可以表达：
 
@@ -207,6 +232,26 @@ stop_decision: max_segment_value_too_low
 - `state_after` 只在 Controller 能构造满足全部 invariants 的 terminal State 时
   存在。
 
+### Controller initialization component failure
+
+UserMemory、Item/Segment Store、InitialRanker 或初始 StateBuilder 在
+`Controller.run()` 的 one-time initialization 中抛出 declared exception 时，
+如果 TraceWriter 正常，固定写一条 terminal record：
+
+```text
+decision_index: 0
+state_before/state_after: None
+information_need/segment_values/selection/perception_result: None
+action_consumed: false
+stop_decision.reason: component_failure
+```
+
+对应 `AgentRunResult` 使用 `succeeded=false`、`final_state=None`、
+`attempted_perception_actions=0` 和 `trace_record_count=1`。这与 Bootstrap
+constructor failure 不同：后者发生在 Controller 前，只留下
+`resolved_config.json`，不伪造 trace/result。TraceWriter 自身失败则遵守 P1-09
+特殊边界，不要求再写本记录或 Result。
+
 ### Safety termination
 
 ```text
@@ -220,6 +265,10 @@ stop_decision.reason: safety_limit_reached
 
 Value Model 被调用后，trace 保存本轮全部 `SegmentValue`，不能只保存最大值。
 Replay 用它验证 coverage、argmax、tie-break 和 low-value stop。
+
+Controller 先按复合 identity 验证 Value coverage，再把 values 归一化到按
+`(item_id, segment_id)` 排列的 `CandidateSegmentRef` input 顺序。Model 返回的
+原始 tuple 顺序不进入 trace，也不影响 golden bytes。
 
 `SegmentValue` 是轻量 JSON object。Trace 不保存：
 
@@ -293,6 +342,11 @@ Result 不重复保存 final ranking；它由 `final_state.candidates` 的 curre
 Component descriptors 只在 Result 保存一次，不在每条 trace line 重复。
 Resolved config 保存所有控制参数和 implementation selections。
 
+Descriptor tuple 使用
+[`00_deterministic_mock_scenario.md`](00_deterministic_mock_scenario.md) 3.5 节的
+固定 role 顺序；config selector ID 与 runtime descriptor implementation ID 不得
+混用。
+
 Canonical golden test 不读取当前 worktree 的动态 Git 状态，固定注入
 `git_commit=None`、`git_dirty=None`；普通 CLI/Python run 仍记录能够获得的真实
 Git metadata。这样 golden result 不会因为测试发生在不同 commit 上而失效，也
@@ -324,11 +378,20 @@ TraceWriter 是同步 sink：
 - 每条 record 写入后立即 flush，不在内存中累计完整 run。
 - writer failure 抛 `ComponentExecutionError` 并终止 Agent。
 - trace 写入失败后不能继续执行昂贵 action。
-- result 写入失败时 run 不能报告为成功，CLI 必须返回非零。
+- 已成功 flush 的 trace records 保留；Writer 自身失败时，不要求同一个已经损坏的
+  Writer 再写一条 terminal record 或 result。
+- `result.json` 使用原子目标文件写入；写入失败时不能留下看似完整的结果。
+- `write_step` 或 `write_result` 失败时 Python API 传播
+  `ComponentExecutionError`，不返回 `AgentRunResult`；CLI 返回 1。
+- result 写入失败时，已经成功写入的 terminal trace 可以保留，但 run 不能报告
+  为成功。
 
 `resolved_config.json` 不由 Controller/TraceWriter 生成；P1-08 runner 在调用
 Controller 前负责保存。Trace/result 仍由 Controller 通过绑定 run directory 的
 TraceWriter 写入，CLI 不复制这些写入逻辑。
+
+以上 Writer failure 和 partial-artifact 行为由 P1-09 确认。Replay 对不完整或
+缺少 result 的 run 必须明确拒绝，不能把 partial artifacts 当成完整运行。
 
 ---
 

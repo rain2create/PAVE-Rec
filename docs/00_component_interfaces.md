@@ -64,6 +64,14 @@ class ComponentDescriptor:
 descriptor 并在构造 Controller 时注入；P1-07 已确认 descriptors 只在
 `AgentRunResult` 保存一次。
 
+`components.<role>` 中的短字符串是 config selector ID，例如 `mock` 或
+`in_memory`；`ComponentDescriptor.implementation` 是被 selector 实际构造的
+稳定 runtime implementation ID，例如 `MockUserMemory`。后者使用显式常量，不能
+通过 reflection 动态生成 import path 或 `__qualname__`。Bootstrap 必须验证
+descriptor 的 `role` 与正在组装的 config role 一致，并按 P1-08 typed config 的
+固定 role 顺序收集 descriptors。Phase 1 的精确 selector/descriptor/version 表见
+[`00_deterministic_mock_scenario.md`](00_deterministic_mock_scenario.md)。
+
 ### CandidateScore
 
 ```python
@@ -284,7 +292,9 @@ class SegmentValueModel(Protocol):
 ```
 
 Result 必须与 input candidate segments 一一对应，不允许 duplicate、missing 或
-extra `(item_id, segment_id)`。空 candidate-segment input 返回空 tuple。
+extra `(item_id, segment_id)`。Model 返回 tuple 的原始顺序不承载业务语义；
+Controller 按 identity 验证 coverage，并在 selection/trace 前归一化到
+`request.candidate_segments` 的顺序。空 candidate-segment input 返回空 tuple。
 
 ### Perception
 
@@ -404,6 +414,11 @@ P1-05 已确认 declared exception 终止当前 run；正常
 `PerceptionResult(status=failed)` 在提交 failed observation 和 action counters
 后可以继续。StopReason 已由 P1-06 确认，terminal trace/result 字段由 P1-07
 确认。
+
+业务/运行时 declared exception 在 TraceWriter 健康时写 terminal trace/result。
+TraceWriter 自身的 `ComponentExecutionError` 是 P1-09 确认的 artifact-sink 特殊
+边界：立即停止、传播异常、不要求损坏的 Writer 再写自己的失败，也不返回
+`AgentRunResult`。
 
 P1-06 已确认 action budget 以 `SegmentPerceiver.observe()` 的调用为消费边界：
 正常 succeeded/failed result 和 Perceiver declared exception 都消耗一次 action；

@@ -161,9 +161,9 @@ SupervisedSegmentValueModel
 
 ## 7. Training Principle
 
-第一阶段先做 supervised learning。
+进入 Phase 5 后，第一条真实 value-model baseline 先做 supervised learning。
 
-V1 不要求 RL。
+Phase 5 不要求 RL；Phase 1 只实现查表的 MockSegmentValueModel。
 
 Label generation 的总体逻辑：
 
@@ -227,7 +227,7 @@ for state in sampled_recommendation_states:
 
 ---
 
-## 9. V1 Architecture
+## 9. First Supervised Architecture (Phase 5)
 
 不要锁死研究 architecture。
 
@@ -279,7 +279,7 @@ ranking quality gain
 perception cost
 ```
 
-但 RL 不属于 V1 必需项。
+但 RL 不属于 Phase 5 的必需项。
 
 ---
 

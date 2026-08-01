@@ -136,9 +136,29 @@ user sequence feature:
 ### 3.5 Component Versions
 
 所有 fixture-backed Mock components 和 in-memory stores 都暴露 P1-03 要求的
-`ComponentDescriptor`，其中 `implementation` 使用具体类名，`version` 固定为
-`mock-v1`。State Builder、Stop Policy、Trace Writer 等非 fixture 查表组件使用
-各自实现版本，不冒用 Mock fixture version。
+`ComponentDescriptor`。Config selector、runtime descriptor 和 version 是不同
+概念；Bootstrap 使用 selector 选择 constructor，Result 保存实际 descriptor。
+Phase 1 按下表固定 descriptor tuple 的顺序和值：
+
+| Order | Role | Config selector | Descriptor implementation | Version |
+|---:|---|---|---|---|
+| 1 | `user_memory` | `mock` | `MockUserMemory` | `mock-v1` |
+| 2 | `initial_ranker` | `mock` | `MockInitialRanker` | `mock-v1` |
+| 3 | `item_feature_store` | `in_memory` | `InMemoryItemFeatureStore` | `mock-v1` |
+| 4 | `segment_store` | `in_memory` | `InMemorySegmentStore` | `mock-v1` |
+| 5 | `state_builder` | `default` | `DefaultRecommendationStateBuilder` | `phase1-v1` |
+| 6 | `information_need` | `mock` | `MockInformationNeedEstimator` | `mock-v1` |
+| 7 | `segment_value` | `mock` | `MockSegmentValueModel` | `mock-v1` |
+| 8 | `perceiver` | `mock` | `MockPerceiver` | `mock-v1` |
+| 9 | `evidence_updater` | `mock` | `MockEvidenceUpdater` | `mock-v1` |
+| 10 | `observation_updater` | `mock` | `MockObservationUpdater` | `mock-v1` |
+| 11 | `score_updater` | `mock` | `MockScoreUpdater` | `mock-v1` |
+| 12 | `stop_policy` | `threshold` | `ThresholdStopPolicy` | `phase1-v1` |
+| 13 | `trace_writer` | `jsonl` | `JsonlTraceWriter` | `phase1-v1` |
+
+这些 implementation 字符串是稳定显式 ID，并不授权 reflection-based component
+loading。Fixture-backed implementations 使用 `mock-v1`；通用 Phase 1 harness
+components 使用 `phase1-v1`，不冒用 fixture version。
 
 ---
 
@@ -371,8 +391,18 @@ timeout 从 failed result 改成 exception。两者都发生在 Perceiver 调用
 
 - Fixture specification 和 semantic expected run 纳入 Git，version 为
   `mock-v1`。
-- 实现阶段将机器可读 fixture 放在 `tests/fixtures/mock/v1/`。
+- 实现阶段将机器可读 fixture 放在
+  `tests/fixtures/mock/v1/scenario.json`，并将 canonical expected artifacts 固定为：
+
+  ```text
+  tests/fixtures/mock/v1/expected/resolved_config.json
+  tests/fixtures/mock/v1/expected/trace.jsonl
+  tests/fixtures/mock/v1/expected/result.json
+  ```
+
 - P1-07 已确认 JSONL schema；实现阶段生成三行 canonical golden trace：
   两条 completed action records 和一条 pre-value budget stop record。
-- Golden run ID 固定为 `mock-v1-golden`，并断言完整 JSON round trip。
+- Golden run ID 固定为 `mock-v1-golden`，Git metadata 固定注入 `None`，三个
+  expected artifacts 使用 P1-07 canonical UTF-8/LF serializer 做 byte-exact
+  comparison，并另外断言完整 JSON round trip。
 - Fixture 内容发生有意的行为变化时创建新版本，不静默改写旧 golden contract。

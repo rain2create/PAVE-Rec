@@ -308,7 +308,8 @@ Decision:
     稳定公共类型。
 12. Schema validators 必须检查 ID uniqueness、ranking continuity、reference
     identity、Evidence/Observation consistency 和 budget equation 等跨字段
-    invariants。
+    invariants。Segment 使用 `(item_id, segment_id)` 复合 identity；segment_id
+    只在所属 item 内唯一，不要求跨 items 全局唯一。
 Schema inventory:
 PreferenceState; PreferenceMatchType; ObservationStatus;
 ResourceRef; PreferenceAtomView; PreferenceMatchView; UserMemoryView;
@@ -439,8 +440,10 @@ Decision:
 7. Store 只发布静态 metadata/references，不执行 Observation filtering 或策略。
    每个请求 item 必须有显式返回 entry，不能静默遗漏。
 8. 每个 component 暴露只读 ComponentDescriptor(role, implementation, version)；
-   P1-07 已确认 descriptors 只在 AgentRunResult 保存一次，P1-08 已确认由
-   Bootstrap 收集并在构造 Controller 时注入。
+   config 中的短 implementation selector 与 descriptor 中的稳定 runtime
+   implementation ID 是两个显式概念。P1-07 已确认 descriptors 只在
+   AgentRunResult 保存一次，P1-08 已确认由 Bootstrap 按固定 config role 顺序
+   收集并在构造 Controller 时注入。
 9. StopPolicy 的 pre/post-value 方法、StopReason 和 priority 已由 P1-06
    确认；TraceWriter 的完整方法和失败语义已由 P1-07 确认。
 Complexity guardrails:
@@ -639,12 +642,16 @@ Decision:
    EvidenceUpdater/ObservationUpdater 失败时不发布不一致 post-State，保留最后
    一个合法 State，并在 terminal result/trace 中记录 attempt/error。
 9. ContractError、ResourceResolutionError 和 ComponentExecutionError 都终止
-   当前 run，不自动继续或伪造空输出；未声明的编程异常向外传播。
+   当前 run，不自动继续或伪造空输出；未声明的编程异常向外传播。业务/运行时
+   declared exception 在 TraceWriter 健康时写 terminal trace/result；TraceWriter
+   自身 failure 使用 P1-09 的 artifact-sink 特殊边界并向调用方传播。
 10. 正常 action 在 post-State rebuild 后提交 completed transition；pre/post
-    stop 提交 terminal outcome；declared exception 提交 terminal failure。
-    JSONL/event 字段和写入失败语义留给 P1-07。
+    stop 提交 terminal outcome；业务/运行时 declared exception 在 Writer 健康时
+    提交 terminal failure。JSONL/event 字段和写入失败语义留给 P1-07/P1-09。
 11. Controller 最多允许 max_perception_actions + 1 次 decision-loop 进入，并
-    返回完整 AgentRunResult，而不是只返回 ranking。Result 字段留给 P1-07。
+    在 terminal trace/result 成功持久化后返回完整 AgentRunResult，而不是只返回
+    ranking。TraceWriter failure 不返回未完整持久化的 Result。Result 字段留给
+    P1-07。
 Rationale:
 先排除无需行动的状态，再计算 Need/Value；每个正常 Perceiver result 对应一次
 清晰、可重建的 counter/state transition。正常 perception failure 可以继续，
@@ -746,9 +753,10 @@ Decision:
    budget_exhausted > no_unobserved_segments >
    ranking_sufficiently_certain > max_segment_value_too_low。正常 failed
    perception 本身不是 StopReason；提交 State 后由下一轮条件决定。
-9. StopDecision continue 时 stop=False/reason=None；terminal 时
+9. StopDecision continue 时 stop=False/reason=None/details={}；terminal 时
    stop=True/reason 必须存在。details 只保存结构化诊断信号，不能用自由文本
-   reason 或隐藏字段驱动控制。
+   reason 或隐藏字段驱动控制。各 StopReason 的精确 details keys 以
+   docs/08_agent_controller.md 的 P1-01—P1-09 consistency correction 为准。
 10. Phase 1 不增加 cancellation token 或 external_cancelled reason。同步
     interrupt 由 CLI/进程入口处理，async/service cancellation 留到未来讨论。
 Rationale:
@@ -826,11 +834,12 @@ Decision:
    不新增 manifest。普通 run ID 为 UTC timestamp 加 8 位随机十六进制，不包含
    业务 ID；canonical golden run ID 固定为 mock-v1-golden。已有目录不得静默
    覆盖。
-2. Resolved config 使用稳定 JSON，保存单父继承合并和 validation 后的完整 typed
-   configuration，保留显式 null，不保存 secret；P1-08 runner 在 Controller 前
-   写入。
-3. Trace 每次 decision-loop 一行，不拆成 event stream。Canonical mock-v1 为
-   两条 completed action records 加一条 pre-value budget stop，共三行。
+2. Resolved config 使用 P1-09 固定的 canonical JSON bytes，保存单父继承合并和
+   validation 后的完整 typed configuration，保留显式 null，不保存 secret；
+   P1-08 runner 在 Controller 前原子写入。
+3. Trace 每次 decision-loop 一行，不拆成 event stream。Controller initialization
+   declared failure 允许在 loop 前写唯一一条 terminal record。Canonical mock-v1
+   为两条 completed action records 加一条 pre-value budget stop，共三行。
 4. Trace 使用完整但链式的 State：第一条保存 state_before，每次合法 transition
    保存 state_after，后续 current State 从上一条 state_after 得到且不重复保存
    state_before。Zero-budget/first-terminal record 保存 step-0 State；Result
@@ -840,14 +849,17 @@ Decision:
    PerceptionResult、action_consumed、terminal StopDecision 和 metadata。不增加
    TraceOutcome、StopStage 或 AgentError schema。
 6. Value Model 被调用后保存所有轻量 SegmentValue，以验证 coverage、argmax、
-   tie-break 和 low-value stop。Tensor、embedding、media 和 raw MLLM output
-   不内嵌，只使用已有 ResourceRef；不增加 timing/cost placeholders。
+   tie-break 和 low-value stop。Controller 按复合 identity 验证并归一化到
+   `(item_id, segment_id)` canonical input order 后再写 trace。Tensor、embedding、
+   media 和 raw MLLM output 不内嵌，只使用已有 ResourceRef；不增加 timing/cost
+   placeholders。
 7. AgentRunResult 保存 success flag、final State、terminal StopDecision、
    attempted actions、trace count、seed、data version、component descriptors、
    git commit/dirty 和 metadata。Final ranking 从 final State 派生，不重复存储；
    declared error 使用 StopDecision.details。
 8. Result 中 seed、data/fixture version、component descriptors 和 Git fields
-   必须存在；Git metadata 无法获得时允许 null，dirty run 明确标记。
+   必须存在；Git metadata 无法获得时允许 null，dirty run 明确标记。Descriptors
+   按 P1-08 config role 固定顺序保存；selector ID 与 runtime descriptor ID 分离。
 9. 正式 replay 读取 resolved config、trace 和 result，顺序重建并验证 State
    chain、budget、selection、Evidence/Observation、stop 和 Result，不重新调用
    components，也不重新计算真实模型 score。
@@ -855,8 +867,10 @@ Decision:
     seed、固定 run ID 和固定 nullable test Git metadata，要求 trace/result 精确
     一致。普通 run 仍记录真实 Git metadata。
 11. TraceWriter 暴露 write_step 和 write_result。每条 record validation 后以
-    UTF-8 JSONL 写入并 flush；任何 write failure 抛 ComponentExecutionError
-    并终止 run，result write failure 不能报告成功。
+    canonical UTF-8/LF JSONL 写入并 flush；任何 write failure 抛
+    ComponentExecutionError 并终止 run。Writer 自身 failure 不要求再写 terminal
+    record/result，不返回 AgentRunResult；result 使用原子目标文件写入，失败不能
+    报告成功或留下半截正式 result.json。
 12. Phase 1 只使用 synthetic Mock users，不保存 raw history、secret、绝对媒体
     路径或 stack trace。TraceWriter 不 hash/修改 State；真实用户数据脱敏在
     进入真实数据阶段前单独确认。
@@ -985,10 +999,11 @@ Decision:
    是 null 或非负 finite float；min_segment_value 是 null 或 finite float，允许为
    负。run ID 和路径也必须显式验证；可用 component ID 按 role 限定，未知 ID
    直接拒绝。
-4. Phase 1 component implementation ID 固定使用 mock、in_memory、default、
-   threshold 和 jsonl 等稳定短 ID。Bootstrap 对每个 role 使用显式 match 或
-   constructor mapping；以后新增真实实现时显式增加 ID 和 constructor，不允许
-   arbitrary import path、reflection-based construction 或隐式 discovery。
+4. Phase 1 config selector ID 固定使用 mock、in_memory、default、threshold 和
+   jsonl 等稳定短 ID。Bootstrap 对每个 role 使用显式 match 或 constructor
+   mapping；runtime ComponentDescriptor 使用独立、显式、稳定的 implementation
+   ID，不通过 reflection 生成。以后新增真实实现时显式增加 selector、descriptor
+   和 constructor，不允许 arbitrary import path 或隐式 discovery。
 5. --config 相对 shell working directory 解析。项目根目录是配置文件祖先中包含
    pyproject.toml 的目录；找不到时启动失败。extends 必须是相对当前 YAML 文件
    的路径，整个 extends chain 必须留在同一项目根目录。配置内部
@@ -1002,16 +1017,17 @@ Decision:
    version 与 config.data_version 一致；Bootstrap 接收这个已验证 fixture，不得
    再次读取。
 7. Controller run input 收敛为 strict/frozen AgentRunRequest(run_id, user_id,
-   user_history, candidate_ids)。Controller.run(request) 返回 AgentRunResult。
-   Budget、stop thresholds、seed、data version、components、descriptors 和可获得的
-   Git metadata 在构造 Controller 时注入，不在 Request 中重复。Request、resolved
-   config、State、Trace 和 Result 的实际 run ID 必须一致。
+   user_history, candidate_ids)。Controller.run(request) 在 terminal trace/result
+   成功写入时返回 AgentRunResult；TraceWriter failure 传播异常且不返回 Result。
+   Budget、stop thresholds、seed、data version、components、descriptors 和可获得
+   的 Git metadata 在构造 Controller 时注入，不在 Request 中重复。Request、
+   resolved config、State、Trace 和 Result 的实际 run ID 必须一致。
 8. Bootstrap 接收 validated config、已验证 fixture、run directory 和所需 runtime
    metadata；显式实例化全部 Protocol implementations，将同一个 fixture object
-   传给相关 Mock components，创建绑定 run directory 的 TraceWriter，收集
-   component descriptors 并构造 AgentController。Bootstrap 不执行 loop、不计算
-   Need/Value、不选 segment、不修改 State、不实现 Stop Policy，也不使用 global
-   singleton 或 service locator。
+   传给相关 Mock components，创建绑定 run directory 的 TraceWriter，按 typed
+   config role 固定顺序收集并验证 component descriptors，再构造 AgentController。
+   Bootstrap 不执行 loop、不计算 Need/Value、不选 segment、不修改 State、不实现
+   Stop Policy，也不使用 global singleton 或 service locator。
 9. Python 提供两层调用。底层 build_controller(...) 返回使用相同公共契约的
    AgentController，调用方显式传入 AgentRunRequest；高层 run_from_config(...)
    负责 load/merge/validate config、一次性 fixture load、run ID/directory、resolved
@@ -1033,8 +1049,10 @@ Decision:
     不产生 Agent artifacts。Bootstrap constructor failure 是 startup failure，
     不伪装成 Agent decision；因为它发生在目录和 resolved config 已安全落盘后，
     可以留下仅含 resolved_config.json 的失败 run directory，但不能伪造
-    trace.jsonl、result.json 或 StopDecision。Controller 启动后的 declared
-    component/trace failure 遵守 P1-05—P1-07。CLI exit code 固定为：0 表示
+    trace.jsonl、result.json 或 StopDecision。Controller initialization component
+    failure 在 Writer 健康时写无 State 的 terminal trace/result；TraceWriter
+    failure 使用 P1-09 特殊边界。其他 Controller runtime failure 遵守
+    P1-05—P1-07。CLI exit code 固定为：0 表示
     完整写入且
     AgentRunResult.succeeded=True；1 表示 startup constructor、runtime、component
     或 artifact/trace failure；2 表示 CLI/config/fixture/input validation failure；
@@ -1093,11 +1111,11 @@ Date: 2026-08-01
 
 ## 11. P1-09 — Test Matrix and Phase Acceptance
 
-Status: `Pending`
+Status: `Confirmed`
 
 ### Unit Tests
 
-需要确认并覆盖：
+必须覆盖：
 
 - config inheritance/merge/cycle detection、strict validation 和 path rules
 - schema validation and serialization
@@ -1108,6 +1126,9 @@ Status: `Pending`
 - stop reason precedence
 - evidence append/update behavior
 - score-prior preservation invariant
+- trace/replay chain、selection 和 action-accounting validators
+- declared-exception partial-progress semantics
+- budget-derived safety guard
 
 ### Integration Tests
 
@@ -1120,6 +1141,7 @@ Status: `Pending`
 - Controller → Trace Writer
 - validated config/fixture → bootstrap → Controller
 - Python `run_from_config()` 与 CLI 使用同一运行路径
+- Perceiver、Updater、ScoreUpdater 和 TraceWriter fault injection
 
 ### End-to-End Tests
 
@@ -1128,12 +1150,15 @@ Status: `Pending`
 - no-unobserved-segment run
 - ranking-certainty stop
 - low-value stop
-- failure-path run
-- same seed/config deterministic replay
+- normal failed-perception continuation
+- declared component-failure paths
+- saved-output deterministic replay
+- exact deterministic Mock re-execution
 - explicit run-ID collision without overwrite
 - CLI success/failure exit codes and output channels
+- bootstrap failure and partial-artifact behavior
 
-### Phase 1 验收候选标准
+### Phase 1 验收标准
 
 - 同一输入、配置和 seed 得到相同结果。
 - segment 不会被重复观察。
@@ -1144,12 +1169,132 @@ Status: `Pending`
 - JSONL trace 足以完成确认定义下的 replay。
 - Controller 只依赖接口。
 - 所有真实研究算法仍为 Mock、Deferred 或 TBD。
+- Canonical golden run 的 resolved config、trace 和 result 精确稳定。
+- 测试离线、CPU-only，并且只向 pytest 临时目录写 run artifacts。
+- `pytest`、Ruff 和已确认的 branch coverage gate 全部通过。
+- GitHub Actions 的已确认 Python/OS matrix 全部通过。
 
 ### P1-09 的交付结果
 
 - 最终测试矩阵
 - Phase 1 Definition of Done
 - 允许进入实现和验收的明确边界
+
+### P1-09 Decision Record
+
+```text
+Decision ID: P1-09
+Status: Confirmed
+Decision:
+1. Phase 1 使用 unit、integration 和 end-to-end 三层测试。每条已确认的 Schema、
+   interface、Controller transition、Stop condition、artifact lifecycle 和 CLI
+   contract 都必须至少在最贴近其 ownership 的层级拥有明确断言；不能只用一个
+   happy-path E2E test 代替边界测试。
+2. 本阶段质量门固定为 pytest 全部通过、Phase 1 implementation modules 的
+   branch coverage 至少 90%，并通过 Ruff lint 和 format check。Phase 1 暂不把
+   mypy 或其他静态类型检查器加入 Definition of Done，避免扩大工具链范围。
+3. GitHub Actions 属于 Phase 1 Definition of Done。CI matrix 固定覆盖 Ubuntu 上
+   Python 3.10/3.12，以及 Windows 上 Python 3.12；所有 jobs 必须通过。
+4. Canonical mock-v1 在 pytest 临时 synthetic project root 的 run directory 中
+   执行，并与纳入版本控制的
+   resolved_config.json、trace.jsonl 和 result.json 做 byte-exact golden
+   comparison。三个 artifacts 使用 P1-07 canonical serializer；Golden 使用固定
+   run ID 和固定 nullable Git metadata。正式
+   saved-output replay 只读取 artifacts 并做 schema/chain/decision semantic
+   validation；exact deterministic Mock re-execution 是独立测试。
+5. budget_exhausted、ranking_sufficiently_certain、no_unobserved_segments、
+   max_segment_value_too_low、component_failure 和 safety_limit_reached 六个
+   StopReason 都必须覆盖。Safety guard 可以通过直接注入越界 iteration count 的
+   unit test 覆盖，不要求在合法 Agent flow 中人为制造无限循环。
+6. Failure matrix 必须区分 Controller initialization component failure、normal
+   failed PerceptionResult、Perceiver declared exception、ObservationUpdater
+   failure、EvidenceUpdater failure、ScoreUpdater failure、TraceWriter step
+   failure 和 result failure，并断言各自的 action accounting、last valid State、
+   partial progress、trace/result 和 CLI exit code。
+7. TraceWriter failure 是 artifact sink 的特殊失败边界。write_step 失败后立即
+   停止且不得执行后续 action；已经成功 flush 的 records 保留，不要求已经损坏的
+   Writer 再记录自己的 terminal record。write_result 使用原子目标文件写入；失败
+   时不得留下看似完整的 result.json。两种 Writer failure 都不能返回/报告成功的
+   AgentRunResult，Python API 传播 ComponentExecutionError，CLI 返回 1。
+8. Config/path tests 必须覆盖 inheritance、merge、cycle、unknown fields/IDs、
+   absolute path、.. escape、project-root detection 和 run-ID collision。Symlink
+   escape 在运行平台允许创建 symlink 时执行；不支持的环境显式 skip，其他 path
+   contract 仍为必测项。
+9. 所有自动化测试必须 offline、CPU-only，不调用网络、真实 MLLM、GPU 或外部
+   dataset。Integration/E2E 在 pytest `tmp_path` 下建立包含 pyproject、configs、
+   fixture 和 runs 的最小 synthetic project root；配置路径仍严格为 root 内相对
+   路径。测试不写入或清理仓库真实 runs/。
+10. Phase 1 完成要求：全部本地 quality gates 和 CI matrix 通过；canonical
+    artifacts 可精确复现；saved-output replay 通过；README、稳定 docs、配置和
+    实现一致；仓库中仍不包含被误写死的真实研究算法。
+11. P1-09 Confirmed 表示 Phase 1 的设计与验收门已经关闭，可以开始实现；它不
+    表示 Phase 1 已经完成。只有上述 Definition of Done 全部满足后，路线图中的
+    Phase 1 才能标记 Completed。
+Rationale:
+Phase 1 的目标是证明完整 Agent harness 的确定性、状态正确性和可回放性。分层
+测试、精确 golden、独立 replay、全部 partial-progress fault paths 和跨平台 CI
+共同防止 happy-path-only、仅本机可运行或 artifact 不完整却误报成功。
+Alternatives considered:
+只运行 pytest happy path；不设 coverage/lint gate；只在本机测试；只测试一个
+通用 component exception；将 replay 与 re-execution 混为一体；Writer 失败后
+继续 action；要求损坏的 Writer 记录自身失败；在测试中写仓库 runs/；Phase 1
+立即引入 mypy 或真实模型 smoke tests。
+Affected schemas/interfaces:
+AgentController, TraceWriter, replay validators, config/bootstrap/runner/CLI and all
+confirmed Phase 1 component contracts. No new research schema is introduced.
+Affected docs/tests:
+docs/00_trace_replay.md；todo/implementation_roadmap.md；Phase 1 unit/integration/
+e2e/golden tests；GitHub Actions workflow；quality-tool configuration。
+Deferred follow-up:
+真实 MLLM integration、network/GPU tests、timing/cost telemetry、mypy adoption、
+真实 dataset paths 和 performance/load tests 在对应后续 Phase 再确认。
+Confirmed by: User
+Date: 2026-08-01
+```
+
+### P1-01—P1-09 Cross-Gate Consistency Record
+
+```text
+Decision ID: P1-XG-01
+Status: Confirmed
+Decision:
+1. Segment identity 统一为 (item_id, segment_id)；segment_id 只在所属 item 内
+   唯一。任何全局 candidate-segment coverage、selection、tie-break 和 replay 都
+   使用复合 identity。
+2. Config selector ID 与 ComponentDescriptor.implementation 分离。前者选择显式
+   constructor，后者标识实际 runtime implementation；descriptor tuple 使用固定
+   config role 顺序和 docs/00_deterministic_mock_scenario.md 3.5 的版本表。
+3. resolved config、trace 和 result 使用 docs/00_trace_replay.md 的唯一 canonical
+   UTF-8/LF JSON contract。JSON keys、collection order、explicit null、file-ending
+   newline 和 golden checkout line endings 全部固定；仓库增加 .gitattributes。
+4. StopDecision.details 使用 docs/08_agent_controller.md 的按 reason 精确 key
+   contract。CandidateSegment/SegmentValue、State candidates、catalog segments、
+   Evidence 和 component descriptors 使用各自已记录的 canonical order。
+5. 普通业务/运行时 declared exception 在 TraceWriter 健康时写 terminal
+   trace/result。TraceWriter 自身 failure 是特殊 artifact-sink 边界：立即停止、
+   保留此前成功 records、传播 ComponentExecutionError、不返回 Result。
+6. Config/input validation、Bootstrap constructor、Controller initialization
+   component 和 TraceWriter failure 使用四种明确的 artifact lifecycle；Controller
+   initialization failure 的 terminal record 无 State、action_consumed=false。
+7. P1-09 的临时 artifacts 不放宽 P1-08 path contract。E2E 使用 pytest tmp_path
+   内的 synthetic project root，fixture/output 仍为 root 内规范化相对路径。
+8. docs/09 的第一条 preprocessing baseline 属于 Phase 2；docs/01 和 docs/02
+   的真实 User Memory/SASRec 属于 Phase 3；docs/06 的真实 MLLM 和 cost logging
+   属于 Phase 4；docs/05 的 supervised Segment Value 属于 Phase 5。Phase 1
+   不实现或预留这些真实算法/telemetry 字段。
+Rationale:
+消除九个 Gate 之间会让 validator、golden、exception handling 或测试 root 产生
+两种合法解释的工程歧义，同时不改变任何研究算法、Mock 数值、状态机主顺序、
+预算或 Stop semantics。
+Affected docs/tests:
+docs/00_shared_domain_schemas.md；docs/00_component_interfaces.md；
+docs/00_deterministic_mock_scenario.md；docs/00_trace_replay.md；
+docs/08_agent_controller.md；docs/02_sasrec_initial_ranking.md；
+docs/06_mllm_perception.md；configs/README.md；todo/implementation_roadmap.md；
+Phase 1 schema/interface/controller/config/trace/golden/failure tests。
+Confirmed by: User
+Date: 2026-08-01
+```
 
 ---
 

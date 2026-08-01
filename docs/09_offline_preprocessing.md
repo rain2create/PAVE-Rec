@@ -82,7 +82,8 @@ scene-based segmenter
 hybrid segmenter
 ```
 
-V1 为了工程方便可以先用 fixed-duration segment。
+Phase 2 的第一条 preprocessing baseline 为了工程方便可以先用 fixed-duration
+segment。
 
 但必须明确：
 
@@ -164,4 +165,4 @@ segment 从 Recommendation State 做确定性投影。权威接口和缺失资�
 - final segmentation strategy
 - exact proxy feature set
 - exact embedding models
-- whether ASR/audio is included in V1
+- whether ASR/audio is included in the first Phase 2 baseline

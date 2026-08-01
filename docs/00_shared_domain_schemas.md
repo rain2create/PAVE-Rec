@@ -29,6 +29,10 @@ Updater 返回新对象，不原地修改已经发布的 domain object。
 ## 2. Common Conventions
 
 - 所有 ID 是非空 `str`。
+- item、user、atom、evidence、need 和 run 等 ID 在各自 owning collection 中按
+  对应 contract 保持唯一。Segment 的完整身份始终是
+  `(item_id, segment_id)`；`segment_id` 只要求在同一个 item 内唯一，不要求在
+  不同 items 之间全局唯一。
 - 事件时间使用 Unix epoch milliseconds，并显式命名为 `*_at_ms`。
 - 行为顺序在需要时使用非负 `interaction_index`。
 - `None` 表示未提供、不可用或尚未计算。
@@ -50,6 +54,20 @@ Phase 1 实现必须在 validation 时复制 JSON payload，并将其视为只�
 标准 JSON round trip 使用 Pydantic v2 `model_dump(mode="json",
 exclude_none=False)` 与对应 JSON validation API；不能依赖 Python pickle 作为
 公共 Domain 的持久化格式。
+
+Phase 1 的持久化 tuple 使用以下 canonical ordering：
+
+- `InitialRankingOutput.candidates` 按显式 `rank` 排列。
+- `RecommendationState.candidates` 按 `current_rank` 排列。
+- 每个 item 的 catalog segments 按 `(start_ms, end_ms, segment_id)` 排列；对应的
+  proxy refs、observation snapshots 和 unobserved IDs 保持同一相对顺序。
+- Evidence 按成功 acquisition/append 顺序排列，关联的 evidence IDs 保持同序。
+- Controller 投影的 `CandidateSegmentRef` 按 `(item_id, segment_id)` 排列；trace
+  中的 `SegmentValue` 在 identity coverage validation 后归一化到同一顺序。
+
+JSON object key order、文件编码和换行由
+[`00_trace_replay.md`](00_trace_replay.md) 的 canonical serialization contract
+统一定义。
 
 domain 中不允许：
 
@@ -328,7 +346,8 @@ class StopDecision:
 Phase 1 Schema implementation 必须验证：
 
 - `ResourceRef.store/key/version` 均为非空字符串。
-- 同一 collection 中的 item、segment、atom、evidence ID 不重复。
+- 同一 owning collection 中 item、atom 和 evidence ID 不重复；segment 使用复合
+  identity `(item_id, segment_id)`，同一 item 内不允许重复 segment ID。
 - Initial/current rank 从 1 开始、连续且唯一；candidate 顺序与显式 rank 一致。
 - `InitialRankingOutput`、`RecommendationState` 和各 Store snapshot 中的
   candidate/item identity 一致。
@@ -339,7 +358,8 @@ Phase 1 Schema implementation 必须验证：
 - `unobserved` observation 的 `attempt_count == 0` 且无 Evidence；
   `succeeded` 至少关联一个同 item/segment 的 Evidence；`failed` 保存明确的
   failure reason，并且不伪造 Evidence。
-- `SegmentMeta.end_ms > start_ms`，同一 item 下 segment ID 唯一。
+- `SegmentMeta.end_ms > start_ms`；跨 item 可以复用同名 segment ID，但同一 item
+  下 segment ID 必须唯一。
 - `remaining_perception_actions == max_perception_actions - step`，且三者非负。
 - `RankingUncertainty.top1_top2_margin` 在存在时是 finite 且非负。
 - `StopDecision.stop=False` 时 `reason=None`；`stop=True` 时 reason 必须存在。

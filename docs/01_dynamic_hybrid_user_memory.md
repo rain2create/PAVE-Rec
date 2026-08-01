@@ -439,9 +439,9 @@ LLM semantic profile != primary online memory update mechanism
 
 ---
 
-## 11. V1 Implementation
+## 11. First Real Implementation (Phase 3)
 
-V1 可以先使用：
+Phase 3 的第一条真实 User Memory baseline 可以先使用：
 
 - text descriptions for atoms
 - one embedding model
@@ -452,6 +452,9 @@ V1 可以先使用：
 - simple decay
 
 所有 threshold 和 update coefficient 都必须配置化。
+
+Phase 1 只实现固定查表的 `MockUserMemory`，不实现上述 atom extraction、matching、
+EMA、persistence 或 decay baseline。
 
 ---
 

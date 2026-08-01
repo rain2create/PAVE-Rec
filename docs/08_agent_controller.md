@@ -39,6 +39,11 @@ Budget、stop thresholds、seed、data version、components、component descript
 candidate ID 或 run identity 不一致是启动前 `ContractError`，不是一次正常
 StopDecision。
 
+`run()` 只有在 terminal trace 和 `result.json` 都成功写入后才返回
+`AgentRunResult`。TraceWriter 的 `write_step` 或 `write_result` 失败是 P1-09
+确认的 artifact-sink 特殊边界：方法传播 `ComponentExecutionError`，不返回一个
+未被完整持久化的 Result。
+
 ---
 
 ## 3. Confirmed Runtime State Machine
@@ -96,6 +101,9 @@ current RecommendationState
 - 非空 candidate-segment input 的 Value output 必须一一覆盖；empty/missing/
   extra output 是 `ContractError`。
 - Value 相同按 `(item_id, segment_id)` 升序打破并列。这只是工程确定性规则。
+- Controller 将全部 unobserved segment identities 按 `(item_id, segment_id)`
+  升序投影为 `CandidateSegmentRef`；验证 Value identity coverage 后，将 outputs
+  归一化到该 input 顺序再用于 trace 和 deterministic argmax。
 - post-value stop 在 Perceiver 之前，因此 low-value stop 不消耗 perception
   action。
 
@@ -230,15 +238,23 @@ Failed segment 不自动重试，也不会再次出现在 unobserved projection�
 `ContractError`、`ResourceResolutionError` 和 `ComponentExecutionError` 都会终止
 当前 run，不自动继续，也不转换为空输出或伪成功。未声明的编程异常向外传播。
 
+- UserMemory、Item/Segment Store、InitialRanker 或初始 StateBuilder 在 one-time
+  initialization 中失败时，不存在合法 State，也不消耗 action。TraceWriter 正常
+  时，Controller 写一条无 before/after State 的 component-failure record，并写
+  `final_state=None` 的 failed Result。
+
 - ScoreUpdater 失败时，已经成功取得并通过 updater 验证的 Evidence、
   Observation 和本次 action counter 被保留；scores 保持上一版。Controller
   构造一致的 terminal State，并记录 component failure。
 - EvidenceUpdater 或 ObservationUpdater 失败时，无法发布满足跨对象 invariant
   的 post-State，因此保留最后一个合法 State；terminal result/trace 单独记录
   已发生的 attempt 和异常。
-- 其他 declared exception 同样停止在最后一个合法 State。异常 action accounting
-  和 terminal trace layout 已分别由 P1-06/P1-07 确认；Phase 1 不增加
-  timing/cost fields。
+- 其他业务/运行时 declared exception 同样停止在最后一个合法 State，并在
+  TraceWriter 健康时写 terminal trace/result。异常 action accounting 和 terminal
+  trace layout 已分别由 P1-06/P1-07 确认；Phase 1 不增加 timing/cost fields。
+- TraceWriter 自身的 declared exception 不走“再用 Writer 写 terminal result”的
+  一般路径。它立即停止后续 action、保留此前成功 flush 的 records，并向调用方
+  传播 `ComponentExecutionError`。
 
 Controller 不发布 Evidence/Observation 不一致的中间 RecommendationState。
 
@@ -360,12 +376,35 @@ class StopDecision:
     details: JsonObject
 ```
 
-- continue：`stop=False`、`reason=None`。
+- continue：`stop=False`、`reason=None`、`details={}`。
 - terminal：`stop=True`、reason 必须存在。
 - details 只保存结构化诊断信号，不用于替代 enum 或驱动隐藏控制逻辑。
-- terminal details 至少记录相应的 budget counters、margin/threshold、
-  unobserved count、best segment/value/threshold、component role/error type 或
-  safety iterations/limit。
+- Phase 1 terminal details 使用以下精确 key contract，不增加同义或隐藏控制字段：
+
+```text
+budget_exhausted:
+  max_perception_actions, remaining_perception_actions, step
+
+no_unobserved_segments:
+  unobserved_segment_count
+
+ranking_sufficiently_certain:
+  ranking_margin_threshold, top1_top2_margin
+
+max_segment_value_too_low:
+  item_id, segment_id, max_segment_value, min_segment_value
+
+component_failure:
+  component_role, error_type, message
+
+safety_limit_reached:
+  decision_loop_entries, max_decision_loop_entries
+```
+
+`component_role` 使用稳定 config role，Controller 自身的 contract/safety helper
+使用 `controller`；`error_type` 使用稳定 exception class name；`message` 必须简洁
+且经过边界清理，不能包含 secret、stack trace 或本机绝对路径。JSON serializer
+负责 key 排序，因此上述列举顺序不承担字节顺序语义。
 
 Phase 1 不增加 cancellation token 或 `external_cancelled` reason。同步 CLI 的
 interrupt 交给进程入口处理；未来 async/service runtime 再单独讨论。
@@ -378,7 +417,8 @@ interrupt 交给进程入口处理；未来 async/service runtime 再单独讨�
 
 - 正常 action 在 post-State 成功重建后提交 completed transition。
 - pre-value/post-value stop 提交 terminal outcome。
-- declared component exception 提交 terminal failure。
+- 业务/运行时 declared component exception 在 TraceWriter 健康时提交 terminal
+  failure；TraceWriter 自身 failure 传播而不递归记录。
 
 `AgentStepTrace` 是 strict、frozen、JSON-serializable 公共对象。P1-07 已确认
 每次 decision-loop 写一条 JSONL；State 使用链式保存避免相邻重复，正常
