@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Literal
 
 import yaml
@@ -156,6 +156,12 @@ def _inside(path: Path, root: Path) -> bool:
     return True
 
 
+def _has_platform_anchor(raw_path: str) -> bool:
+    """Reject paths anchored under either supported host path grammar."""
+
+    return PurePosixPath(raw_path).is_absolute() or bool(PureWindowsPath(raw_path).anchor)
+
+
 def _find_project_root(config_path: Path) -> Path:
     for candidate in (config_path.parent, *config_path.parents):
         if (candidate / "pyproject.toml").is_file():
@@ -199,7 +205,7 @@ def _load_chain(path: Path, root: Path, active: tuple[Path, ...]) -> dict[str, A
     if not isinstance(extends, str) or not extends.strip():
         raise ConfigurationError("extends must be one non-empty relative path")
     extends_path = Path(extends)
-    if extends_path.is_absolute():
+    if _has_platform_anchor(extends):
         raise ConfigurationError("extends must be relative to the declaring config")
     try:
         parent = _load_chain(resolved.parent / extends_path, root, (*active, resolved))
@@ -212,7 +218,7 @@ def _normalize_project_path(raw_path: Any, root: Path, field_name: str) -> str:
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ConfigurationError(f"{field_name} must be a non-empty relative path")
     path = Path(raw_path)
-    if path.is_absolute():
+    if _has_platform_anchor(raw_path):
         raise ConfigurationError(f"{field_name} must be project-relative")
     resolved = (root / path).resolve(strict=False)
     if not _inside(resolved, root):
