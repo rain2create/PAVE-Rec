@@ -270,11 +270,15 @@ result.json
 
 Unit tests：
 
+- config/schema/path validation
 - ranking uncertainty
 - stop conditions
 - evidence aggregation
 - reranking
 - score-update invariants
+- trace/replay invariants
+- partial-progress exception semantics
+- composite `(item_id, segment_id)` identity and canonical collection ordering
 
 Integration / E2E tests：
 
@@ -285,6 +289,18 @@ Integration / E2E tests：
 - stop after low maximum segment value
 - deterministic replay
 - exact deterministic Mock re-execution
+- Perceiver/Updater/ScoreUpdater/TraceWriter failure paths
+- Controller one-time initialization component-failure path
+- config/bootstrap/runner/CLI equivalence
+- golden resolved config、trace 和 result comparison
+
+P1-09 已确认 Phase 1 quality gate：pytest 全部通过、Phase 1 implementation
+modules 的 branch coverage 至少 90%，并通过 Ruff lint/format check。GitHub
+Actions 必须覆盖 Ubuntu Python 3.10/3.12 和 Windows Python 3.12。测试必须
+offline、CPU-only，并在 pytest 临时目录中建立 synthetic project root；配置的
+fixture/output paths 仍保持在该 root 内，不放宽 P1-08 path rules。Golden
+artifacts 使用 P1-07 canonical UTF-8/LF JSON serialization 和固定 collection
+ordering。
 
 ### 第一里程碑输出
 
@@ -310,6 +326,10 @@ initial ranking
 - 每次退出都有明确 stop reason
 - JSONL trace 足以回放一次 Agent 决策
 - Controller 不依赖任何具体模型内部实现
+- canonical golden artifacts 可以精确复现
+- 所有正常 failure 和 declared exception 的 partial-progress 语义符合契约
+- 本地 pytest/coverage/Ruff gates 和 GitHub Actions matrix 全部通过
+- 测试不污染仓库 `runs/`，也不调用网络、GPU 或真实 MLLM
 
 ### 本阶段明确不做
 
@@ -320,6 +340,16 @@ initial ranking
 - 最终 Segment Value 架构
 - 最终 Score Update 架构
 - RL
+
+### 当前实现状态
+
+Phase 1 已完成本地实现，包括 strict/frozen schemas、13 个显式组件、Controller、
+配置继承、fixture loader、canonical artifacts、saved-output replay、CLI、golden
+fixtures 和分层测试。本地 pytest、branch coverage 与 Ruff 门已通过；GitHub
+Actions 已配置确认的 Ubuntu Python 3.10/3.12 与 Windows Python 3.12 matrix。
+
+在该 workflow 首次于 GitHub 全部通过前，本路线图不将 Phase 1 标记为最终
+`Completed`；远端 CI 结果是剩余的唯一验收项。
 
 ---
 
@@ -357,7 +387,7 @@ initial ranking
 
 - 最终 segmentation strategy
 - 最终 proxy feature set
-- ASR/audio 是否进入 V1
+- ASR/audio 是否进入 Phase 2 第一条 baseline
 - 最终 embedding model
 
 ---

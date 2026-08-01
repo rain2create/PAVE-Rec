@@ -1,0 +1,15 @@
+extends: base.yaml
+data_version: mock-v1
+components:
+  user_memory: mock
+  initial_ranker: mock
+  item_feature_store: in_memory
+  segment_store: in_memory
+  information_need: mock
+  segment_value: mock
+  perceiver: mock
+  evidence_updater: mock
+  observation_updater: mock
+  score_updater: mock
+input:
+  fixture_path: tests/fixtures/mock/v1/scenario.json

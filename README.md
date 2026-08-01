@@ -196,7 +196,11 @@ Phase 1 的公共 Schema、组件接口和确定性测试剧本分别以
 `docs/00_deterministic_mock_scenario.md` 为准；Trace/Replay contract 以
 `docs/00_trace_replay.md` 为准。配置继承、Bootstrap、`AgentRunRequest`、共享
 runner 和 CLI contract 已由 `todo/phase_1_discussion.md` 的 P1-08 Decision
-Record 确认。
+Record 确认；测试矩阵、quality gates、CI 和 Phase 1 Definition of Done 已由
+P1-09 Decision Record 确认。P1-01—P1-09 的设计门现已关闭，可以开始实现，
+跨 Gate 的 segment identity、descriptor、canonical serialization、failure
+lifecycle 和 temporary-project testing 语义已由 P1-XG-01 统一；但 Phase 1 只有
+在代码、测试、golden artifacts 和 CI 全部通过后才算完成。
 
 ---
 
@@ -371,7 +375,53 @@ while True:
 
 ---
 
-## 8. 当前明确保留为 TBD 的研究问题
+## 8. Phase 1 Deterministic Mock Runtime
+
+Phase 1 提供离线、CPU-only 的完整确定性 Agent 闭环。当前实现只使用 versioned
+`mock-v1` fixture，不包含真实 SASRec、MLLM 或最终研究算法。
+
+安装开发依赖并运行 canonical scenario：
+
+```bash
+python -m pip install -e ".[dev]"
+python -m pave_rec.cli.run_mock --config configs/mock.yaml
+```
+
+也可以直接调用共享 Python API：
+
+```python
+from pave_rec.runner import run_from_config
+
+result = run_from_config("configs/mock.yaml")
+```
+
+每次完整运行写入：
+
+```text
+runs/<run_id>/resolved_config.json
+runs/<run_id>/trace.jsonl
+runs/<run_id>/result.json
+```
+
+Saved-output replay 不会重新调用任何 Agent component：
+
+```python
+from pave_rec.agent.replay import replay_run
+
+result = replay_run("runs/<run_id>")
+```
+
+本地质量门：
+
+```bash
+python -m ruff check src tests
+python -m ruff format --check src tests
+python -m pytest -q --cov=pave_rec --cov-branch --cov-report=term-missing
+```
+
+---
+
+## 9. 当前明确保留为 TBD 的研究问题
 
 下面这些内容暂时不应该被 Codex 写死：
 

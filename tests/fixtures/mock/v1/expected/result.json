@@ -1,0 +1,423 @@
+{
+  "attempted_perception_actions": 2,
+  "component_descriptors": [
+    {
+      "implementation": "MockUserMemory",
+      "role": "user_memory",
+      "version": "mock-v1"
+    },
+    {
+      "implementation": "MockInitialRanker",
+      "role": "initial_ranker",
+      "version": "mock-v1"
+    },
+    {
+      "implementation": "InMemoryItemFeatureStore",
+      "role": "item_feature_store",
+      "version": "mock-v1"
+    },
+    {
+      "implementation": "InMemorySegmentStore",
+      "role": "segment_store",
+      "version": "mock-v1"
+    },
+    {
+      "implementation": "DefaultRecommendationStateBuilder",
+      "role": "state_builder",
+      "version": "phase1-v1"
+    },
+    {
+      "implementation": "MockInformationNeedEstimator",
+      "role": "information_need",
+      "version": "mock-v1"
+    },
+    {
+      "implementation": "MockSegmentValueModel",
+      "role": "segment_value",
+      "version": "mock-v1"
+    },
+    {
+      "implementation": "MockPerceiver",
+      "role": "perceiver",
+      "version": "mock-v1"
+    },
+    {
+      "implementation": "MockEvidenceUpdater",
+      "role": "evidence_updater",
+      "version": "mock-v1"
+    },
+    {
+      "implementation": "MockObservationUpdater",
+      "role": "observation_updater",
+      "version": "mock-v1"
+    },
+    {
+      "implementation": "MockScoreUpdater",
+      "role": "score_updater",
+      "version": "mock-v1"
+    },
+    {
+      "implementation": "ThresholdStopPolicy",
+      "role": "stop_policy",
+      "version": "phase1-v1"
+    },
+    {
+      "implementation": "JsonlTraceWriter",
+      "role": "trace_writer",
+      "version": "phase1-v1"
+    }
+  ],
+  "data_version": "mock-v1",
+  "final_state": {
+    "candidates": [
+      {
+        "current_rank": 1,
+        "current_score": 0.87,
+        "evidence": {
+          "aggregated_attributes": {
+            "mock_evidence_ids": [
+              "evidence_b_1"
+            ]
+          },
+          "evidence": [
+            {
+              "attributes": {
+                "plot_twist": "strong"
+              },
+              "confidence": 0.9,
+              "embedding_ref": null,
+              "evidence_id": "evidence_b_1",
+              "item_id": "item_b",
+              "metadata": {},
+              "raw_output_ref": null,
+              "segment_id": "segment_1",
+              "source": "mock-v1",
+              "text_summary": "The segment has a strong plot twist."
+            }
+          ],
+          "evidence_embedding_ref": null,
+          "item_id": "item_b"
+        },
+        "initial_rank": 2,
+        "initial_score": 0.79,
+        "item_feature_ref": {
+          "checksum": null,
+          "key": "item_b",
+          "store": "mock_item_features",
+          "version": "mock-v1"
+        },
+        "item_id": "item_b",
+        "segment_observations": [
+          {
+            "attempt_count": 1,
+            "evidence_ids": [
+              "evidence_b_1"
+            ],
+            "failure_reason": null,
+            "item_id": "item_b",
+            "last_attempt_step": 1,
+            "segment_id": "segment_1",
+            "status": "succeeded"
+          },
+          {
+            "attempt_count": 0,
+            "evidence_ids": [],
+            "failure_reason": null,
+            "item_id": "item_b",
+            "last_attempt_step": null,
+            "segment_id": "segment_2",
+            "status": "unobserved"
+          }
+        ],
+        "segment_proxy_refs": [
+          {
+            "feature_ref": {
+              "checksum": null,
+              "key": "item_b/segment_1",
+              "store": "mock_segment_proxies",
+              "version": "mock-v1"
+            },
+            "item_id": "item_b",
+            "metadata": {},
+            "segment_id": "segment_1"
+          },
+          {
+            "feature_ref": {
+              "checksum": null,
+              "key": "item_b/segment_2",
+              "store": "mock_segment_proxies",
+              "version": "mock-v1"
+            },
+            "item_id": "item_b",
+            "metadata": {},
+            "segment_id": "segment_2"
+          }
+        ],
+        "unobserved_segment_ids": [
+          "segment_2"
+        ]
+      },
+      {
+        "current_rank": 2,
+        "current_score": 0.78,
+        "evidence": {
+          "aggregated_attributes": {
+            "mock_evidence_ids": [
+              "evidence_a_2"
+            ]
+          },
+          "evidence": [
+            {
+              "attributes": {
+                "plot_twist": "weak"
+              },
+              "confidence": 0.9,
+              "embedding_ref": null,
+              "evidence_id": "evidence_a_2",
+              "item_id": "item_a",
+              "metadata": {},
+              "raw_output_ref": null,
+              "segment_id": "segment_2",
+              "source": "mock-v1",
+              "text_summary": "The segment has a weak plot twist."
+            }
+          ],
+          "evidence_embedding_ref": null,
+          "item_id": "item_a"
+        },
+        "initial_rank": 1,
+        "initial_score": 0.81,
+        "item_feature_ref": {
+          "checksum": null,
+          "key": "item_a",
+          "store": "mock_item_features",
+          "version": "mock-v1"
+        },
+        "item_id": "item_a",
+        "segment_observations": [
+          {
+            "attempt_count": 0,
+            "evidence_ids": [],
+            "failure_reason": null,
+            "item_id": "item_a",
+            "last_attempt_step": null,
+            "segment_id": "segment_1",
+            "status": "unobserved"
+          },
+          {
+            "attempt_count": 1,
+            "evidence_ids": [
+              "evidence_a_2"
+            ],
+            "failure_reason": null,
+            "item_id": "item_a",
+            "last_attempt_step": 2,
+            "segment_id": "segment_2",
+            "status": "succeeded"
+          }
+        ],
+        "segment_proxy_refs": [
+          {
+            "feature_ref": {
+              "checksum": null,
+              "key": "item_a/segment_1",
+              "store": "mock_segment_proxies",
+              "version": "mock-v1"
+            },
+            "item_id": "item_a",
+            "metadata": {},
+            "segment_id": "segment_1"
+          },
+          {
+            "feature_ref": {
+              "checksum": null,
+              "key": "item_a/segment_2",
+              "store": "mock_segment_proxies",
+              "version": "mock-v1"
+            },
+            "item_id": "item_a",
+            "metadata": {},
+            "segment_id": "segment_2"
+          }
+        ],
+        "unobserved_segment_ids": [
+          "segment_1"
+        ]
+      },
+      {
+        "current_rank": 3,
+        "current_score": 0.61,
+        "evidence": {
+          "aggregated_attributes": {},
+          "evidence": [],
+          "evidence_embedding_ref": null,
+          "item_id": "item_c"
+        },
+        "initial_rank": 3,
+        "initial_score": 0.61,
+        "item_feature_ref": {
+          "checksum": null,
+          "key": "item_c",
+          "store": "mock_item_features",
+          "version": "mock-v1"
+        },
+        "item_id": "item_c",
+        "segment_observations": [
+          {
+            "attempt_count": 0,
+            "evidence_ids": [],
+            "failure_reason": null,
+            "item_id": "item_c",
+            "last_attempt_step": null,
+            "segment_id": "segment_1",
+            "status": "unobserved"
+          },
+          {
+            "attempt_count": 0,
+            "evidence_ids": [],
+            "failure_reason": null,
+            "item_id": "item_c",
+            "last_attempt_step": null,
+            "segment_id": "segment_2",
+            "status": "unobserved"
+          }
+        ],
+        "segment_proxy_refs": [
+          {
+            "feature_ref": {
+              "checksum": null,
+              "key": "item_c/segment_1",
+              "store": "mock_segment_proxies",
+              "version": "mock-v1"
+            },
+            "item_id": "item_c",
+            "metadata": {},
+            "segment_id": "segment_1"
+          },
+          {
+            "feature_ref": {
+              "checksum": null,
+              "key": "item_c/segment_2",
+              "store": "mock_segment_proxies",
+              "version": "mock-v1"
+            },
+            "item_id": "item_c",
+            "metadata": {},
+            "segment_id": "segment_2"
+          }
+        ],
+        "unobserved_segment_ids": [
+          "segment_1",
+          "segment_2"
+        ]
+      }
+    ],
+    "max_perception_actions": 2,
+    "metadata": {},
+    "ranking_uncertainty": {
+      "top1_top2_margin": 0.09
+    },
+    "remaining_perception_actions": 0,
+    "run_id": "mock-v1-golden",
+    "schema_version": "1",
+    "step": 2,
+    "user_id": "user_main",
+    "user_memory": {
+      "drop_interest_drift": 0.25,
+      "global_drift": 0.2,
+      "long_term_atoms": [
+        {
+          "atom_id": "pref_plot_twist_long",
+          "created_at_ms": null,
+          "embedding_ref": null,
+          "last_seen_at_ms": null,
+          "metadata": {},
+          "persistence": 0.95,
+          "state": "stable",
+          "strength": 0.9,
+          "text": "plot twists"
+        },
+        {
+          "atom_id": "pref_slow_drama_long",
+          "created_at_ms": null,
+          "embedding_ref": null,
+          "last_seen_at_ms": null,
+          "metadata": {},
+          "persistence": 0.8,
+          "state": "fading",
+          "strength": 0.55,
+          "text": "slow drama"
+        }
+      ],
+      "memory_version": "mock-memory-v1",
+      "metadata": {},
+      "new_interest_drift": 0.3,
+      "preference_matches": [
+        {
+          "classification": "stable",
+          "long_atom_id": "pref_plot_twist_long",
+          "short_atom_id": "pref_plot_twist_short",
+          "similarity": 0.93
+        },
+        {
+          "classification": "emerging",
+          "long_atom_id": null,
+          "short_atom_id": "pref_ai_visuals_short",
+          "similarity": 0.18
+        },
+        {
+          "classification": "fading",
+          "long_atom_id": "pref_slow_drama_long",
+          "short_atom_id": null,
+          "similarity": null
+        }
+      ],
+      "semantic_profile": "Stable interest in plot twists; emerging interest in AI visuals.",
+      "short_term_atoms": [
+        {
+          "atom_id": "pref_plot_twist_short",
+          "created_at_ms": null,
+          "embedding_ref": null,
+          "last_seen_at_ms": null,
+          "metadata": {},
+          "persistence": 0.7,
+          "state": "stable",
+          "strength": 0.85,
+          "text": "recent suspense"
+        },
+        {
+          "atom_id": "pref_ai_visuals_short",
+          "created_at_ms": null,
+          "embedding_ref": null,
+          "last_seen_at_ms": null,
+          "metadata": {},
+          "persistence": 0.3,
+          "state": "emerging",
+          "strength": 0.75,
+          "text": "AI-generated visuals"
+        }
+      ],
+      "similarity_matrix_ref": null,
+      "updated_at_ms": null
+    }
+  },
+  "git_commit": null,
+  "git_dirty": null,
+  "metadata": {
+    "output_directory": "runs/mock-v1-golden"
+  },
+  "run_id": "mock-v1-golden",
+  "schema_version": "1",
+  "seed": 7,
+  "stop_decision": {
+    "details": {
+      "max_perception_actions": 2,
+      "remaining_perception_actions": 0,
+      "step": 2
+    },
+    "reason": "budget_exhausted",
+    "stop": true
+  },
+  "succeeded": true,
+  "trace_record_count": 3
+}

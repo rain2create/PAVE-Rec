@@ -1,0 +1,34 @@
+{
+  "agent": {
+    "max_perception_actions": 2
+  },
+  "components": {
+    "evidence_updater": "mock",
+    "information_need": "mock",
+    "initial_ranker": "mock",
+    "item_feature_store": "in_memory",
+    "observation_updater": "mock",
+    "perceiver": "mock",
+    "score_updater": "mock",
+    "segment_store": "in_memory",
+    "segment_value": "mock",
+    "state_builder": "default",
+    "stop_policy": "threshold",
+    "trace_writer": "jsonl",
+    "user_memory": "mock"
+  },
+  "data_version": "mock-v1",
+  "input": {
+    "fixture_path": "tests/fixtures/mock/v1/scenario.json"
+  },
+  "run": {
+    "output_root": "runs",
+    "run_id": "mock-v1-golden"
+  },
+  "schema_version": "1",
+  "seed": 7,
+  "stop": {
+    "min_segment_value": 0.15,
+    "ranking_margin_threshold": 0.1
+  }
+}

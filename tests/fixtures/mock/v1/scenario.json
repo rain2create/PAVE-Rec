@@ -1,0 +1,463 @@
+{
+  "fixture_version": "mock-v1",
+  "information_need": {
+    "concept": "narrative surprise",
+    "contrastiveness": 0.7,
+    "description": "Evidence about whether a candidate contains a strong plot twist.",
+    "embedding_ref": null,
+    "evidence_gap": 0.8,
+    "metadata": {},
+    "need_id": "need_plot_twist",
+    "preference_importance": 0.9,
+    "ranking_relevance": 0.95,
+    "relevant_preference_atom_ids": [
+      "pref_plot_twist_long",
+      "pref_plot_twist_short"
+    ]
+  },
+  "initial_ranking": {
+    "candidates": [
+      {
+        "item_id": "item_a",
+        "rank": 1,
+        "score": 0.81
+      },
+      {
+        "item_id": "item_b",
+        "rank": 2,
+        "score": 0.79
+      },
+      {
+        "item_id": "item_c",
+        "rank": 3,
+        "score": 0.61
+      }
+    ],
+    "metadata": {},
+    "user_sequence_feature_ref": {
+      "checksum": null,
+      "key": "user_main",
+      "store": "mock_user_features",
+      "version": "mock-v1"
+    }
+  },
+  "input": {
+    "candidate_ids": [
+      "item_a",
+      "item_b",
+      "item_c"
+    ],
+    "history": [
+      "history_01",
+      "history_02",
+      "history_03"
+    ],
+    "user_id": "user_main"
+  },
+  "item_feature_refs": [
+    {
+      "feature_ref": {
+        "checksum": null,
+        "key": "item_a",
+        "store": "mock_item_features",
+        "version": "mock-v1"
+      },
+      "item_id": "item_a"
+    },
+    {
+      "feature_ref": {
+        "checksum": null,
+        "key": "item_b",
+        "store": "mock_item_features",
+        "version": "mock-v1"
+      },
+      "item_id": "item_b"
+    },
+    {
+      "feature_ref": {
+        "checksum": null,
+        "key": "item_c",
+        "store": "mock_item_features",
+        "version": "mock-v1"
+      },
+      "item_id": "item_c"
+    }
+  ],
+  "perception_results": [
+    {
+      "evidence": {
+        "attributes": {
+          "pacing": "fast"
+        },
+        "confidence": 0.9,
+        "embedding_ref": null,
+        "evidence_id": "evidence_a_1",
+        "item_id": "item_a",
+        "metadata": {},
+        "raw_output_ref": null,
+        "segment_id": "segment_1",
+        "source": "mock-v1",
+        "text_summary": "The segment has fast pacing."
+      },
+      "failure_code": null,
+      "failure_reason": null,
+      "item_id": "item_a",
+      "metadata": {},
+      "segment_id": "segment_1",
+      "status": "succeeded"
+    },
+    {
+      "evidence": {
+        "attributes": {
+          "plot_twist": "weak"
+        },
+        "confidence": 0.9,
+        "embedding_ref": null,
+        "evidence_id": "evidence_a_2",
+        "item_id": "item_a",
+        "metadata": {},
+        "raw_output_ref": null,
+        "segment_id": "segment_2",
+        "source": "mock-v1",
+        "text_summary": "The segment has a weak plot twist."
+      },
+      "failure_code": null,
+      "failure_reason": null,
+      "item_id": "item_a",
+      "metadata": {},
+      "segment_id": "segment_2",
+      "status": "succeeded"
+    },
+    {
+      "evidence": {
+        "attributes": {
+          "plot_twist": "strong"
+        },
+        "confidence": 0.9,
+        "embedding_ref": null,
+        "evidence_id": "evidence_b_1",
+        "item_id": "item_b",
+        "metadata": {},
+        "raw_output_ref": null,
+        "segment_id": "segment_1",
+        "source": "mock-v1",
+        "text_summary": "The segment has a strong plot twist."
+      },
+      "failure_code": null,
+      "failure_reason": null,
+      "item_id": "item_b",
+      "metadata": {},
+      "segment_id": "segment_1",
+      "status": "succeeded"
+    },
+    {
+      "evidence": {
+        "attributes": {
+          "ai_visuals": "strong"
+        },
+        "confidence": 0.9,
+        "embedding_ref": null,
+        "evidence_id": "evidence_b_2",
+        "item_id": "item_b",
+        "metadata": {},
+        "raw_output_ref": null,
+        "segment_id": "segment_2",
+        "source": "mock-v1",
+        "text_summary": "The segment has strong AI-generated visuals."
+      },
+      "failure_code": null,
+      "failure_reason": null,
+      "item_id": "item_b",
+      "metadata": {},
+      "segment_id": "segment_2",
+      "status": "succeeded"
+    },
+    {
+      "evidence": {
+        "attributes": {
+          "plot_twist": "absent"
+        },
+        "confidence": 0.9,
+        "embedding_ref": null,
+        "evidence_id": "evidence_c_1",
+        "item_id": "item_c",
+        "metadata": {},
+        "raw_output_ref": null,
+        "segment_id": "segment_1",
+        "source": "mock-v1",
+        "text_summary": "The segment has no plot twist."
+      },
+      "failure_code": null,
+      "failure_reason": null,
+      "item_id": "item_c",
+      "metadata": {},
+      "segment_id": "segment_1",
+      "status": "succeeded"
+    },
+    {
+      "evidence": {
+        "attributes": {
+          "slow_drama": "strong"
+        },
+        "confidence": 0.9,
+        "embedding_ref": null,
+        "evidence_id": "evidence_c_2",
+        "item_id": "item_c",
+        "metadata": {},
+        "raw_output_ref": null,
+        "segment_id": "segment_2",
+        "source": "mock-v1",
+        "text_summary": "The segment strongly expresses slow drama."
+      },
+      "failure_code": null,
+      "failure_reason": null,
+      "item_id": "item_c",
+      "metadata": {},
+      "segment_id": "segment_2",
+      "status": "succeeded"
+    }
+  ],
+  "score_deltas": [
+    {
+      "deltas": [
+        {"item_id": "item_a", "score": 0.01},
+        {"item_id": "item_b", "score": 0.0},
+        {"item_id": "item_c", "score": 0.0}
+      ],
+      "evidence_id": "evidence_a_1"
+    },
+    {
+      "deltas": [
+        {"item_id": "item_a", "score": -0.03},
+        {"item_id": "item_b", "score": 0.0},
+        {"item_id": "item_c", "score": 0.0}
+      ],
+      "evidence_id": "evidence_a_2"
+    },
+    {
+      "deltas": [
+        {"item_id": "item_a", "score": 0.0},
+        {"item_id": "item_b", "score": 0.08},
+        {"item_id": "item_c", "score": 0.0}
+      ],
+      "evidence_id": "evidence_b_1"
+    },
+    {
+      "deltas": [
+        {"item_id": "item_a", "score": 0.0},
+        {"item_id": "item_b", "score": 0.02},
+        {"item_id": "item_c", "score": 0.0}
+      ],
+      "evidence_id": "evidence_b_2"
+    },
+    {
+      "deltas": [
+        {"item_id": "item_a", "score": 0.0},
+        {"item_id": "item_b", "score": 0.0},
+        {"item_id": "item_c", "score": -0.01}
+      ],
+      "evidence_id": "evidence_c_1"
+    },
+    {
+      "deltas": [
+        {"item_id": "item_a", "score": 0.0},
+        {"item_id": "item_b", "score": 0.0},
+        {"item_id": "item_c", "score": 0.0}
+      ],
+      "evidence_id": "evidence_c_2"
+    }
+  ],
+  "segment_catalog": [
+    {
+      "item_id": "item_a",
+      "segment_proxy_refs": [
+        {
+          "feature_ref": {"checksum": null, "key": "item_a/segment_1", "store": "mock_segment_proxies", "version": "mock-v1"},
+          "item_id": "item_a",
+          "metadata": {},
+          "segment_id": "segment_1"
+        },
+        {
+          "feature_ref": {"checksum": null, "key": "item_a/segment_2", "store": "mock_segment_proxies", "version": "mock-v1"},
+          "item_id": "item_a",
+          "metadata": {},
+          "segment_id": "segment_2"
+        }
+      ],
+      "segments": [
+        {
+          "end_ms": 10000,
+          "item_id": "item_a",
+          "media_ref": {"checksum": null, "key": "item_a/segment_1", "store": "mock_media", "version": "mock-v1"},
+          "metadata": {},
+          "segment_id": "segment_1",
+          "start_ms": 0
+        },
+        {
+          "end_ms": 20000,
+          "item_id": "item_a",
+          "media_ref": {"checksum": null, "key": "item_a/segment_2", "store": "mock_media", "version": "mock-v1"},
+          "metadata": {},
+          "segment_id": "segment_2",
+          "start_ms": 10000
+        }
+      ]
+    },
+    {
+      "item_id": "item_b",
+      "segment_proxy_refs": [
+        {
+          "feature_ref": {"checksum": null, "key": "item_b/segment_1", "store": "mock_segment_proxies", "version": "mock-v1"},
+          "item_id": "item_b",
+          "metadata": {},
+          "segment_id": "segment_1"
+        },
+        {
+          "feature_ref": {"checksum": null, "key": "item_b/segment_2", "store": "mock_segment_proxies", "version": "mock-v1"},
+          "item_id": "item_b",
+          "metadata": {},
+          "segment_id": "segment_2"
+        }
+      ],
+      "segments": [
+        {
+          "end_ms": 10000,
+          "item_id": "item_b",
+          "media_ref": {"checksum": null, "key": "item_b/segment_1", "store": "mock_media", "version": "mock-v1"},
+          "metadata": {},
+          "segment_id": "segment_1",
+          "start_ms": 0
+        },
+        {
+          "end_ms": 20000,
+          "item_id": "item_b",
+          "media_ref": {"checksum": null, "key": "item_b/segment_2", "store": "mock_media", "version": "mock-v1"},
+          "metadata": {},
+          "segment_id": "segment_2",
+          "start_ms": 10000
+        }
+      ]
+    },
+    {
+      "item_id": "item_c",
+      "segment_proxy_refs": [
+        {
+          "feature_ref": {"checksum": null, "key": "item_c/segment_1", "store": "mock_segment_proxies", "version": "mock-v1"},
+          "item_id": "item_c",
+          "metadata": {},
+          "segment_id": "segment_1"
+        },
+        {
+          "feature_ref": {"checksum": null, "key": "item_c/segment_2", "store": "mock_segment_proxies", "version": "mock-v1"},
+          "item_id": "item_c",
+          "metadata": {},
+          "segment_id": "segment_2"
+        }
+      ],
+      "segments": [
+        {
+          "end_ms": 10000,
+          "item_id": "item_c",
+          "media_ref": {"checksum": null, "key": "item_c/segment_1", "store": "mock_media", "version": "mock-v1"},
+          "metadata": {},
+          "segment_id": "segment_1",
+          "start_ms": 0
+        },
+        {
+          "end_ms": 20000,
+          "item_id": "item_c",
+          "media_ref": {"checksum": null, "key": "item_c/segment_2", "store": "mock_media", "version": "mock-v1"},
+          "metadata": {},
+          "segment_id": "segment_2",
+          "start_ms": 10000
+        }
+      ]
+    }
+  ],
+  "segment_values": [
+    {"item_id": "item_a", "metadata": {}, "segment_id": "segment_1", "value": 0.2},
+    {"item_id": "item_a", "metadata": {}, "segment_id": "segment_2", "value": 0.7},
+    {"item_id": "item_b", "metadata": {}, "segment_id": "segment_1", "value": 0.9},
+    {"item_id": "item_b", "metadata": {}, "segment_id": "segment_2", "value": 0.3},
+    {"item_id": "item_c", "metadata": {}, "segment_id": "segment_1", "value": 0.1},
+    {"item_id": "item_c", "metadata": {}, "segment_id": "segment_2", "value": 0.05}
+  ],
+  "user_memory": {
+    "drop_interest_drift": 0.25,
+    "global_drift": 0.2,
+    "long_term_atoms": [
+      {
+        "atom_id": "pref_plot_twist_long",
+        "created_at_ms": null,
+        "embedding_ref": null,
+        "last_seen_at_ms": null,
+        "metadata": {},
+        "persistence": 0.95,
+        "state": "stable",
+        "strength": 0.9,
+        "text": "plot twists"
+      },
+      {
+        "atom_id": "pref_slow_drama_long",
+        "created_at_ms": null,
+        "embedding_ref": null,
+        "last_seen_at_ms": null,
+        "metadata": {},
+        "persistence": 0.8,
+        "state": "fading",
+        "strength": 0.55,
+        "text": "slow drama"
+      }
+    ],
+    "memory_version": "mock-memory-v1",
+    "metadata": {},
+    "new_interest_drift": 0.3,
+    "preference_matches": [
+      {
+        "classification": "stable",
+        "long_atom_id": "pref_plot_twist_long",
+        "short_atom_id": "pref_plot_twist_short",
+        "similarity": 0.93
+      },
+      {
+        "classification": "emerging",
+        "long_atom_id": null,
+        "short_atom_id": "pref_ai_visuals_short",
+        "similarity": 0.18
+      },
+      {
+        "classification": "fading",
+        "long_atom_id": "pref_slow_drama_long",
+        "short_atom_id": null,
+        "similarity": null
+      }
+    ],
+    "semantic_profile": "Stable interest in plot twists; emerging interest in AI visuals.",
+    "short_term_atoms": [
+      {
+        "atom_id": "pref_plot_twist_short",
+        "created_at_ms": null,
+        "embedding_ref": null,
+        "last_seen_at_ms": null,
+        "metadata": {},
+        "persistence": 0.7,
+        "state": "stable",
+        "strength": 0.85,
+        "text": "recent suspense"
+      },
+      {
+        "atom_id": "pref_ai_visuals_short",
+        "created_at_ms": null,
+        "embedding_ref": null,
+        "last_seen_at_ms": null,
+        "metadata": {},
+        "persistence": 0.3,
+        "state": "emerging",
+        "strength": 0.75,
+        "text": "AI-generated visuals"
+      }
+    ],
+    "similarity_matrix_ref": null,
+    "updated_at_ms": null
+  }
+}
