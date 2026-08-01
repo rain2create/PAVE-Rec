@@ -21,11 +21,10 @@ State 只能由 `RecommendationStateBuilder` 构造。Controller 和其他组件
 
 ## 2. Core Schema
 
-下面表示已经确认的 State contract；具体 dataclass/validated-model 类型和字段
-校验在 P1-02 中确定。
+下面表示已经确认的 State contract。公共 Schema 的权威字段、类型和 validators
+见 [`00_shared_domain_schemas.md`](00_shared_domain_schemas.md)。
 
 ```python
-@dataclass
 class CandidateState:
     item_id: str
 
@@ -34,29 +33,28 @@ class CandidateState:
     initial_rank: int
     current_rank: int
 
-    segment_observations: list[SegmentObservationState]
-    unobserved_segment_ids: list[str]
+    segment_observations: tuple[SegmentObservationState, ...]
+    unobserved_segment_ids: tuple[str, ...]
 
     evidence: ItemEvidenceState
-    item_feature_ref: str | None
-    segment_proxy_refs: dict[str, str]
+    item_feature_ref: ResourceRef | None
+    segment_proxy_refs: tuple[SegmentProxyRef, ...]
 
 
-@dataclass
 class RecommendationState:
     schema_version: str
     run_id: str
     user_id: str
 
     user_memory: UserMemoryView
-    candidates: list[CandidateState]
+    candidates: tuple[CandidateState, ...]
 
     max_perception_actions: int
     remaining_perception_actions: int
     step: int
 
-    ranking_uncertainty: dict
-    metadata: dict
+    ranking_uncertainty: RankingUncertainty
+    metadata: JsonObject
 ```
 
 State 保存全部 candidates。ranking 是显式快照，按 `current_score` 降序排列；
@@ -76,7 +74,7 @@ response 必须放在 Store 或 artifacts 中，并通过带版本的 reference 
 输入：
 
 ```text
-Dynamic User Preference State
+UserMemoryView
 +
 SASRec candidate scores
 +
@@ -163,24 +161,20 @@ Phase 4 讨论。
 
 ## 6. Required API
 
+P1-03 已确认使用
+[`00_component_interfaces.md`](00_component_interfaces.md) 中的
+`RecommendationStateBuildRequest`：
+
 ```python
-class RecommendationStateBuilder:
+class RecommendationStateBuilder(Protocol):
     def build(
         self,
-        user_state,
-        candidate_ids,
-        current_scores,
-        evidence_state,
-        observation_state,
-        max_perception_actions,
-        remaining_perception_actions,
-        step,
-        run_id,
+        request: RecommendationStateBuildRequest,
     ) -> RecommendationState:
         ...
 ```
 
-具体参数对象和 ownership 在 P1-02/P1-03 中确定。
+Builder 只构造新快照，不修改 request 中的任何 Domain object。
 
 ---
 

@@ -30,24 +30,31 @@ ASR / audio text if available
 
 ## 3. 输出 Output
 
-推荐格式：
+公共 Evidence 以
+[`00_shared_domain_schemas.md`](00_shared_domain_schemas.md) 为准：
 
 ```python
-@dataclass
 class Evidence:
+    evidence_id: str
     item_id: str
     segment_id: str
-    attributes: dict
+    attributes: JsonObject
     text_summary: str | None
     confidence: float | None
     source: str
-    metadata: dict
+    raw_output_ref: ResourceRef | None
+    embedding_ref: ResourceRef | None
+    metadata: JsonObject
 ```
+
+原始 response、完整 API payload 和 embedding 不直接内嵌 Evidence，只通过
+带版本的 reference 关联。
 
 例如：
 
 ```json
 {
+  "evidence_id": "ev_B_03_001",
   "item_id": "B",
   "segment_id": "B_03",
   "attributes": {
@@ -55,7 +62,12 @@ class Evidence:
     "pace": "fast",
     "emotional_intensity": "moderate"
   },
-  "confidence": 0.88
+  "text_summary": null,
+  "confidence": 0.88,
+  "source": "example_mllm",
+  "raw_output_ref": null,
+  "embedding_ref": null,
+  "metadata": {}
 }
 ```
 
@@ -83,17 +95,18 @@ MLLM → final recommendation score
 ## 5. Interface
 
 ```python
-class SegmentPerceiver:
+class SegmentPerceiver(Protocol):
     def observe(
         self,
-        item_id: str,
-        segment_id: str,
-        information_need: InformationNeed,
-        user_state: UserMemoryState,
-        current_evidence: object,
-    ) -> Evidence:
+        request: PerceptionRequest,
+    ) -> PerceptionResult:
         ...
 ```
+
+`PerceptionRequest` 只包含已选 `SegmentMeta`、Information Need、
+UserMemoryView 和当前 item Evidence。成功返回 Evidence；可预期失败返回 typed
+failed result，不伪造空 Evidence。权威字段和错误契约见
+[`00_component_interfaces.md`](00_component_interfaces.md)。
 
 Implement：
 

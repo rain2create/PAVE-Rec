@@ -125,6 +125,10 @@ PAVE-Rec/
 │
 ├── docs/
 │   ├── Intro.md
+│   ├── 00_shared_domain_schemas.md
+│   ├── 00_component_interfaces.md
+│   ├── 00_deterministic_mock_scenario.md
+│   ├── 00_trace_replay.md
 │   ├── 01_dynamic_hybrid_user_memory.md
 │   ├── ...
 │   └── 10_evaluation_and_training_plan.md
@@ -187,6 +191,13 @@ implementations；`agent/` 负责编排；`cli/` 只提供可复现实验入口�
 验收标准见 `todo/implementation_roadmap.md`；当前待确认事项见
 `todo/phase_1_discussion.md`。
 
+Phase 1 的公共 Schema、组件接口和确定性测试剧本分别以
+`docs/00_shared_domain_schemas.md`、`docs/00_component_interfaces.md` 和
+`docs/00_deterministic_mock_scenario.md` 为准；Trace/Replay contract 以
+`docs/00_trace_replay.md` 为准。配置继承、Bootstrap、`AgentRunRequest`、共享
+runner 和 CLI contract 已由 `todo/phase_1_discussion.md` 的 P1-08 Decision
+Record 确认。
+
 ---
 
 ## 4. 核心数据流 Core Data Flow
@@ -241,68 +252,93 @@ Rerank
 ## 5. 主运行逻辑 Main Runtime Pseudocode
 
 ```python
-user_state = user_memory.build_or_update(user_history)
-
-candidate_features = item_store.load(candidate_ids)
-segment_proxies = segment_store.load(candidate_ids)
-
-scores = sasrec_ranker.score(
+# validate input, then initialize cheap/static inputs once
+user_memory_view = user_memory.build_or_update(user_id, tuple(user_history))
+item_feature_refs = item_store.load_refs(tuple(candidate_ids))
+segment_catalog = segment_store.load_catalog(tuple(candidate_ids))
+initial_ranking = sasrec_ranker.score(
     user_id=user_id,
-    sequence=user_history,
-    candidate_ids=candidate_ids,
+    sequence=tuple(user_history),
+    candidate_ids=tuple(candidate_ids),
 )
-
+scores = scores_from(initial_ranking)
 evidence_state = EvidenceState.empty(candidate_ids)
-budget = config.agent.max_perception_steps
+observation_state = ObservationState.empty(candidate_ids)
+max_perception_actions = config.agent.max_perception_actions
+step = 0
+state = recommendation_state_builder.build(...)
 
 while True:
-    state = recommendation_state_builder.build(
-        user_state=user_state,
-        candidate_ids=candidate_ids,
-        current_scores=scores,
-        evidence_state=evidence_state,
-        remaining_budget=budget,
-    )
+    enforce_budget_derived_safety_guard()
 
-    if stop_policy.should_stop(state):
-        break
+    pre_decision = stop_policy.decide_pre_value(state)
+    if pre_decision.stop:
+        return terminal_result(state, pre_decision)
 
     information_need = information_need_estimator.estimate(state)
-
-    candidate_segments = segment_store.get_unobserved_segments(
-        candidate_ids=candidate_ids,
-        evidence_state=evidence_state,
-    )
-
+    candidate_segments = candidate_segments_from(state)
     values = segment_value_model.predict(
-        state=state,
-        information_need=information_need,
-        candidate_segments=candidate_segments,
+        SegmentValueInput(
+            state=state,
+            information_need=information_need,
+            candidate_segments=candidate_segments,
+        )
+    )
+    validate_value_coverage(candidate_segments, values)
+    best = deterministic_argmax(values)
+
+    post_decision = stop_policy.decide_post_value(state, best)
+    if post_decision.stop:
+        return terminal_result(state, post_decision)
+
+    result = perceiver.observe(
+        PerceptionRequest(
+            segment=find_segment_meta(segment_catalog, best),
+            information_need=information_need,
+            user_memory=user_memory_view,
+            current_item_evidence=state_candidate(state, best).evidence,
+            metadata={},
+        )
     )
 
-    selected = values.argmax()
-
-    evidence = perceiver.observe(
-        item_id=selected.item_id,
-        segment_id=selected.segment_id,
-        information_need=information_need,
-        user_state=user_state,
-        current_evidence=evidence_state,
+    attempt_step = state.step + 1
+    next_observation_state = observation_updater.update(
+        state=observation_state,
+        result=result,
+        attempt_step=attempt_step,
     )
 
-    evidence_state.update(evidence)
+    if result.status == ObservationStatus.SUCCEEDED:
+        next_evidence_state = evidence_updater.update(
+            evidence_state,
+            result.evidence,
+        )
+        next_scores = score_updater.update(
+            ScoreUpdateRequest(
+                user_memory=user_memory_view,
+                initial_ranking=initial_ranking,
+                previous_scores=scores,
+                item_feature_refs=item_feature_refs,
+                evidence_state=next_evidence_state,
+                metadata={},
+            )
+        )
+    else:
+        next_evidence_state = evidence_state
+        next_scores = scores
 
-    scores = score_updater.update(
-        user_state=user_state,
-        candidate_features=candidate_features,
-        previous_scores=scores,
-        evidence_state=evidence_state,
-    )
-
-    budget -= 1
-
-final_ranking = reranker.rank(scores)
+    observation_state = next_observation_state
+    evidence_state = next_evidence_state
+    scores = next_scores
+    step = attempt_step
+    state = recommendation_state_builder.build(...)
+    emit_completed_transition(...)
 ```
+
+以上只展示主控制流。正常 failed result 消耗 action、记录 failed observation
+后可以继续；declared component exception 终止 run。完整状态机以
+`docs/08_agent_controller.md` 为准，公共对象和组件契约分别以
+`docs/00_shared_domain_schemas.md`、`docs/00_component_interfaces.md` 为准。
 
 ---
 
@@ -310,6 +346,9 @@ final_ranking = reranker.rank(scores)
 
 - `docs/Intro.md`
 - `docs/00_shared_domain_schemas.md`
+- `docs/00_component_interfaces.md`
+- `docs/00_deterministic_mock_scenario.md`
+- `docs/00_trace_replay.md`
 - `docs/01_dynamic_hybrid_user_memory.md`
 - `docs/02_sasrec_initial_ranking.md`
 - `docs/03_recommendation_state.md`

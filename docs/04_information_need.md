@@ -44,29 +44,37 @@ Recommendation State
 
 ## 3. 输出 Output
 
+公共输出以
+[`00_shared_domain_schemas.md`](00_shared_domain_schemas.md) 为准：
+
 ```python
-@dataclass
 class InformationNeed:
     need_id: str
     concept: str
     description: str
+    relevant_preference_atom_ids: tuple[str, ...]
     preference_importance: float | None
     evidence_gap: float | None
     ranking_relevance: float | None
     contrastiveness: float | None
-    embedding: Tensor | None
-    metadata: dict
+    embedding_ref: ResourceRef | None
+    metadata: JsonObject
 ```
 
 例如：
 
 ```json
 {
+  "need_id": "need_001",
   "concept": "narrative surprise",
   "description": "Evidence about whether a candidate contains strong plot twists",
+  "relevant_preference_atom_ids": ["atom_plot_twist"],
   "preference_importance": 0.91,
   "evidence_gap": 0.82,
-  "ranking_relevance": 0.88
+  "ranking_relevance": 0.88,
+  "contrastiveness": null,
+  "embedding_ref": null,
+  "metadata": {}
 }
 ```
 
@@ -91,22 +99,23 @@ PreferenceImportance(k)
 
 ---
 
-## 5. V1 Implementation
+## 5. Implementation Staging
 
-V1 先支持一个简单 estimator。
+Phase 1 只使用 deterministic `MockInformationNeedEstimator` 验证接口和数据流，
+不实现或默认任何真实 Information Need 算法。
 
-可以：
+后续第一个真实 baseline 可以讨论：
 
 1. 获取 top user preference atoms
 2. 判断 top competing candidates 在哪些 preference dimensions 上 evidence 很弱
 3. 优先选择最能影响候选区分的维度
 
-第一版可以是 rule-based。
+Rule-based estimator 是候选 baseline，不是已经确认的最终研究选择。
 
 Interface：
 
 ```python
-class InformationNeedEstimator:
+class InformationNeedEstimator(Protocol):
     def estimate(
         self,
         state: RecommendationState,
@@ -114,9 +123,13 @@ class InformationNeedEstimator:
         ...
 ```
 
+跨组件接口的权威定义见
+[`00_component_interfaces.md`](00_component_interfaces.md)。
+
 Implementations：
 
 ```text
+MockInformationNeedEstimator
 RuleBasedInformationNeedEstimator
 LearnedInformationNeedEstimator
 ```

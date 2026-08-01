@@ -21,7 +21,8 @@
 哪些旧兴趣正在衰退？
 ```
 
-最终生成的 `UserMemoryState` 会被以下模块使用：
+Memory 模块内部维护完整 `UserMemoryState`，并向以下模块发布
+`UserMemoryView`：
 
 - Recommendation State
 - Information Need
@@ -76,6 +77,9 @@ class UserMemoryState:
 
 `UserMemoryState` 是 Memory 模块内部的完整状态。Recommendation State 不直接
 内嵌这个对象，而是保存一个紧凑、只读、可 JSON 序列化的 `UserMemoryView`。
+公共 View 的权威字段定义见
+[`00_shared_domain_schemas.md`](00_shared_domain_schemas.md)；本节只解释它与
+Memory 内部状态的关系。
 
 这个 View 至少表达：
 
@@ -94,13 +98,15 @@ Long x Short Similarity Matrix reference
 可选 `embedding_ref`，不保存 Tensor。Matrix 的紧凑派生信号可以表示为：
 
 ```python
-@dataclass
 class PreferenceMatchView:
-    short_atom_id: str
-    best_long_atom_id: str | None
+    long_atom_id: str | None
+    short_atom_id: str | None
     similarity: float | None
-    classification: str
+    classification: PreferenceMatchType
 ```
+
+`stable` signal 同时关联 long/short atom；`emerging` 可以没有 long atom；
+`fading` 可以没有 short atom。两个 atom ID 不能同时为空。
 
 Information Need 消费 stable/emerging/fading、match score 和 drift 等派生信号，
 不负责重新提取 atom、重新计算 Matrix 或修改 Memory。未来 learned estimator
@@ -109,6 +115,21 @@ Information Need 消费 stable/emerging/fading、match score 和 drift 等派生
 
 一次 Agent run 内使用固定的 `UserMemoryView`。只有新的真实用户行为触发
 Memory 更新；对候选 segment 的 perception Evidence 不反向修改用户兴趣。
+
+P1-03 已确认 recommendation-facing synchronous interface：
+
+```python
+class UserMemory(Protocol):
+    def build_or_update(
+        self,
+        user_id: str,
+        history: tuple[str, ...],
+    ) -> UserMemoryView:
+        ...
+```
+
+权威接口和最小输入权限见
+[`00_component_interfaces.md`](00_component_interfaces.md)。
 
 ---
 

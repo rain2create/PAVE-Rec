@@ -52,12 +52,15 @@ Segment Cheap Proxy Features
 
 ## 3. 输出 Output
 
+公共输出以
+[`00_shared_domain_schemas.md`](00_shared_domain_schemas.md) 为准：
+
 ```python
-@dataclass
 class SegmentValue:
     item_id: str
     segment_id: str
     value: float
+    metadata: JsonObject
 ```
 
 Agent 选择：
@@ -110,34 +113,42 @@ select B.seg1
 
 ## 5. Feature Interface
 
+跨模块输入只携带 State、Information Need 和带版本的 feature references。
+具体 implementation 加载 reference 后可以构造 Tensor batch，但不把 Tensor
+写回公共 Domain Schema。
+
 ```python
-@dataclass
-class SegmentValueInput:
-    user_state: object
-    recommendation_state: object
-    information_need: object
-
+class CandidateSegmentRef:
     item_id: str
-    item_features: dict
-
     segment_id: str
-    segment_proxy_features: dict
+    item_feature_ref: ResourceRef | None
+    segment_proxy_ref: ResourceRef | None
+
+
+class SegmentValueInput:
+    state: RecommendationState
+    information_need: InformationNeed
+    candidate_segments: tuple[CandidateSegmentRef, ...]
 ```
 
 ---
 
 ## 6. Model API
 
+P1-03 已确认 synchronous batch interface：
+
 ```python
-class SegmentValueModel:
+class SegmentValueModel(Protocol):
     def predict(
         self,
-        state: RecommendationState,
-        information_need: InformationNeed,
-        candidate_segments: list[SegmentValueInput],
-    ) -> list[SegmentValue]:
+        request: SegmentValueInput,
+    ) -> tuple[SegmentValue, ...]:
         ...
 ```
+
+输出必须与输入 candidate segments 一一对应，不允许 duplicate、missing 或
+extra item/segment。权威错误契约见
+[`00_component_interfaces.md`](00_component_interfaces.md)。
 
 Implementations：
 

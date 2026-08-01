@@ -36,13 +36,24 @@ V1 先以标准 sequential recommendation 为主。
 
 ## 3. 输出 Output
 
+跨模块输出使用
+[`00_shared_domain_schemas.md`](00_shared_domain_schemas.md) 中的公共 Schema：
+
 ```python
-@dataclass
+class InitialRankedCandidate:
+    item_id: str
+    score: float
+    rank: int
+
+
 class InitialRankingOutput:
-    scores: dict[str, float]
-    ranking: list[str]
-    user_sequence_embedding: Tensor | None
+    candidates: tuple[InitialRankedCandidate, ...]
+    user_sequence_feature_ref: ResourceRef | None
+    metadata: JsonObject
 ```
+
+SASRec 内部可以使用 Tensor，但跨模块输出只暴露显式 candidate entries 和
+可选 feature reference，避免 `scores` 与独立 `ranking` 发生不一致。
 
 例如：
 
@@ -124,13 +135,16 @@ Negative sampling 的具体策略保留 configurable。
 
 ## 7. Required APIs
 
+权威接口见
+[`00_component_interfaces.md`](00_component_interfaces.md)：
+
 ```python
-class InitialRanker:
+class InitialRanker(Protocol):
     def score(
         self,
         user_id: str,
-        sequence: list[str],
-        candidate_ids: list[str],
+        sequence: tuple[str, ...],
+        candidate_ids: tuple[str, ...],
     ) -> InitialRankingOutput:
         ...
 ```
@@ -154,7 +168,7 @@ Agent 只消费：
 candidate_id
 score
 ranking
-optional hidden state
+optional hidden-state / sequence-feature reference
 ```
 
 ---
@@ -165,7 +179,7 @@ optional hidden state
 
 ```bash
 python scripts/train_sasrec.py
-python scripts/run_mock_agent.py
+python -m pave_rec.cli.run_mock --config configs/mock.yaml
 ```
 
 Mock agent 可以直接消费真实 SASRec score。

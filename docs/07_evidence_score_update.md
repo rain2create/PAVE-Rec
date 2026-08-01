@@ -21,19 +21,28 @@ rerank
 
 ## 2. Evidence State
 
+公共 Evidence/Observation Schema 以
+[`00_shared_domain_schemas.md`](00_shared_domain_schemas.md) 为准：
+
 ```python
-@dataclass
 class ItemEvidenceState:
     item_id: str
-    evidence_list: list[Evidence]
-    aggregated_attributes: dict
-    evidence_embedding: Tensor | None
-    segment_observations: dict[str, SegmentObservationState]
+    evidence: tuple[Evidence, ...]
+    aggregated_attributes: JsonObject
+    evidence_embedding_ref: ResourceRef | None
 
 
-@dataclass
 class EvidenceState:
-    items: dict[str, ItemEvidenceState]
+    items: tuple[ItemEvidenceState, ...]
+
+
+class ItemObservationState:
+    item_id: str
+    segment_observations: tuple[SegmentObservationState, ...]
+
+
+class ObservationState:
+    items: tuple[ItemObservationState, ...]
 ```
 
 Evidence 和 Segment Observation 是不同概念。Phase 1 的每个 segment 使用：
@@ -48,9 +57,10 @@ failed
 被调用但没有产生有效 Evidence。失败仍消耗一次 perception action，Phase 1
 不自动重试。
 
-运行时 `EvidenceState` 中的 observation records 是唯一事实来源。Segment Store
-只保存静态 metadata；Recommendation State 中的 observation 和 unobserved
-segment 列表都是构造时生成的只读快照。
+运行时 `ObservationState` 是 observation records 的唯一事实来源；
+`EvidenceState` 只保存成功产生的 Evidence。Segment Store 只保存静态
+metadata；Recommendation State 中的 observation 和 unobserved segment
+列表都是 Builder 构造的只读派生快照。
 
 State 和 Score Updater 只消费轻量结构化 Evidence。原始 MLLM response、完整
 API response、媒体、frame 和 Evidence embedding 存在 artifacts/Store 中，并
@@ -63,14 +73,30 @@ API response、媒体、frame 和 Evidence embedding 存在 artifacts/Store 中�
 Required API：
 
 ```python
-class EvidenceUpdater:
+class EvidenceUpdater(Protocol):
     def update(
         self,
-        evidence_state: EvidenceState,
-        new_evidence: Evidence,
+        state: EvidenceState,
+        evidence: Evidence,
     ) -> EvidenceState:
         ...
+
+
+class ObservationUpdater(Protocol):
+    def update(
+        self,
+        state: ObservationState,
+        result: PerceptionResult,
+        attempt_step: int,
+    ) -> ObservationState:
+        ...
 ```
+
+P1-03 已确认两个 updater 都是纯状态转换并返回新对象。EvidenceUpdater 只处理
+成功 Evidence；ObservationUpdater 处理 succeeded/failed attempt。P1-05 已确认
+`attempt_step = current RecommendationState.step + 1`，与 post-action State
+中的 `step` 相同。权威接口见
+[`00_component_interfaces.md`](00_component_interfaces.md)。
 
 V1 可以简单做：
 
@@ -138,16 +164,17 @@ new score
 ## 5. API
 
 ```python
-class ScoreUpdater:
+class ScoreUpdater(Protocol):
     def update(
         self,
-        user_state,
-        candidate_features,
-        previous_scores,
-        evidence_state,
-    ) -> dict[str, float]:
+        request: ScoreUpdateRequest,
+    ) -> tuple[CandidateScore, ...]:
         ...
 ```
+
+`ScoreUpdateRequest` 同时携带 initial ranking prior 和 previous scores；输出必须
+覆盖全部 candidates。接口定义见
+[`00_component_interfaces.md`](00_component_interfaces.md)。
 
 Implementations：
 
@@ -169,10 +196,17 @@ MockScoreUpdater
 
 ```python
 def rerank(scores: dict[str, float]) -> list[str]:
-    return sorted(scores, key=scores.get, reverse=True)
+    return [
+        item_id
+        for item_id, _ in sorted(
+            scores.items(),
+            key=lambda pair: (-pair[1], pair[0]),
+        )
+    ]
 ```
 
-每次 update 之后都重新构建 `RecommendationState`。
+每次 update 之后都重新构建 `RecommendationState`；相同 score 使用稳定的
+`item_id` 次序打破并列。
 
 ---
 

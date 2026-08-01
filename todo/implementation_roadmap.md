@@ -41,19 +41,25 @@ Agent 的核心调用方式是 Python API：
 
 ```python
 result = controller.run(
-    user_id=user_id,
-    user_history=user_history,
-    candidate_ids=candidate_ids,
+    AgentRunRequest(
+        run_id=run_id,
+        user_id=user_id,
+        user_history=user_history,
+        candidate_ids=candidate_ids,
+    )
 )
 ```
 
-CLI 只负责：
+共享的 `run_from_config()` 负责：
 
 - 读取配置
 - 选择并组装组件
 - 加载一次运行的输入
-- 调用同一个 Python API
-- 保存 resolved config、trace 和结果
+- 独占创建 run directory 并保存 resolved config
+- 调用同一个 Controller Python API
+
+CLI 只解析少量入口参数、调用 `run_from_config()` 并报告结果。Trace 和 Result
+由 Controller 通过注入的 TraceWriter 写入，不在 CLI 中复制持久化流程。
 
 CLI 不保存研究逻辑，也不实现另一套 Agent loop。
 
@@ -163,24 +169,10 @@ Phase 1 开始编码前，必须先逐项完成 `todo/phase_1_discussion.md` 中
 
 ### Step 1 — 定义核心领域对象
 
-至少包括：
-
-- `PreferenceAtom`
-- `UserMemoryState`
-- `InitialRankingOutput`
-- `SegmentMeta`
-- `SegmentProxy`
-- `CandidateState`
-- `RecommendationState`
-- `InformationNeed`
-- `Evidence`
-- `ItemEvidenceState`
-- `EvidenceState`
-- `SegmentValueInput`
-- `SegmentValue`
-- `StopDecision`
-- `AgentStepTrace`
-- `AgentRunResult`
+公共对象以 `docs/00_shared_domain_schemas.md` 的 canonical inventory 为准，
+包括 references、User Memory View、initial ranking、segments、
+Evidence/Observation、Recommendation State、Agent decisions、Trace 和 Result。
+Memory 或模型内部的 `PreferenceAtom`、Tensor batch 等不属于公共 Domain Schema。
 
 Trace、配置快照和最终结果必须可以稳定序列化。
 
@@ -197,6 +189,7 @@ Trace、配置快照和最终结果必须可以稳定序列化。
 - `SegmentValueModel`
 - `SegmentPerceiver`
 - `EvidenceUpdater`
+- Observation transition owner / optional `ObservationUpdater`
 - `ScoreUpdater`
 - `StopPolicy`
 - `TraceWriter`
@@ -205,7 +198,9 @@ Trace、配置快照和最终结果必须可以稳定序列化。
 
 ### Step 3 — 实现确定性 Mock Components
 
-使用固定 fixture 和 seed 实现：
+按照 `docs/00_deterministic_mock_scenario.md` 中已确认的 `mock-v1`，使用固定、
+versioned fixture 实现。Canonical run 记录 seed，但不依赖 pseudo-random
+behavior：
 
 - Mock User Memory
 - Mock Initial Ranker
@@ -214,24 +209,32 @@ Trace、配置快照和最终结果必须可以稳定序列化。
 - Mock Segment Value Model
 - Mock Perceiver
 - Mock Evidence Updater
+- Mock Observation transition
 - Mock Score Updater
-- Threshold Stop Policy
+- P1-06 已确认的 Phase 1 action-budget Stop Policy
 
 Mock 必须能制造一次真实的排序变化，不能所有步骤都返回静态占位值。
+主场景固定执行两次 perception：先观察 rank-2 的 `item_b.segment_1` 并触发
+换位，再验证该 segment 不会被重复观察，最终使 perception budget 归零。
 
 ### Step 4 — 实现 Agent Runtime
 
-实现：
+按照 `docs/08_agent_controller.md` 中 P1-05 已确认的状态机实现：
 
 - `AgentController`
+- one-time initialization outside the decision loop
 - Recommendation State rebuild
-- perception 前停止判断
-- value prediction 后停止判断
+- pre-value stop before Information Need
+- post-value stop before Perceiver
 - segment observed 状态更新
 - budget 和 step 更新
+- normal failed-perception continuation
+- terminal declared-exception handling
+- deterministic `(item_id, segment_id)` value tie-break
+- budget-derived hard loop guard
 - reranking
-- structured step trace
-- final run result
+- P1-07 chained full-State JSONL trace
+- complete final `AgentRunResult`
 
 ### Step 5 — 配置、组装与运行入口
 
@@ -242,10 +245,25 @@ configs/base.yaml
 configs/mock.yaml
 ```
 
-实现一个集中组装组件的 bootstrap/factory，并提供薄 CLI：
+配置使用 P1-08 已确认的单父 `extends`、deterministic merge、PyYAML parse 和
+strict/frozen Pydantic v2 validation；不引入 Hydra/OmegaConf 或动态 component
+import。实现一个集中组装组件的 bootstrap/factory、共享 `run_from_config()` 和
+薄 CLI：
+
+```python
+result = run_from_config("configs/mock.yaml")
+```
 
 ```bash
 python -m pave_rec.cli.run_mock --config configs/mock.yaml
+```
+
+每个 run 按 `docs/00_trace_replay.md` 生成：
+
+```text
+resolved_config.json
+trace.jsonl
+result.json
 ```
 
 ### Step 6 — 自动化测试
@@ -266,6 +284,7 @@ Integration / E2E tests：
 - stop after sufficiently high ranking margin
 - stop after low maximum segment value
 - deterministic replay
+- exact deterministic Mock re-execution
 
 ### 第一里程碑输出
 
@@ -285,7 +304,7 @@ initial ranking
 
 - 同一输入、配置和 seed 得到相同结果
 - segment 不会被重复观察
-- 每次 perception 恰好扣减一次 budget
+- 每次 Perceiver attempt（成功或失败）恰好扣减一次 action budget
 - 未观察 item 始终保留有意义的 initial ranking prior
 - 每一步都重新构造完整 Recommendation State
 - 每次退出都有明确 stop reason

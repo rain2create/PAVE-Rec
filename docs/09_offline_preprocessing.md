@@ -47,8 +47,11 @@ CF / ID embedding
 通过统一 feature store 暴露。
 
 ```python
-class ItemFeatureStore:
-    def load(self, item_ids: list[str]) -> dict:
+class ItemFeatureStore(Protocol):
+    def load_refs(
+        self,
+        item_ids: tuple[str, ...],
+    ) -> tuple[ItemFeatureRef, ...]:
         ...
 ```
 
@@ -56,16 +59,17 @@ class ItemFeatureStore:
 
 ## 4. Video Segmentation
 
-输出：
+跨模块 Segment metadata 以
+[`00_shared_domain_schemas.md`](00_shared_domain_schemas.md) 为准：
 
 ```python
-@dataclass
 class SegmentMeta:
     item_id: str
     segment_id: str
-    start_time: float
-    end_time: float
-    media_path: str
+    start_ms: int
+    end_ms: int
+    media_ref: ResourceRef
+    metadata: JsonObject
 ```
 
 当前 segmentation strategy 尚未最终确定。
@@ -105,16 +109,22 @@ relative position
 thumbnail similarity
 ```
 
-Schema：
+Preprocessing implementation 可以在生成阶段使用包含 Tensor/ndarray 的内部
+artifact 对象，但写入 Store 后，跨模块只暴露带版本的 `SegmentProxyRef`：
 
 ```python
-@dataclass
-class SegmentProxy:
+class SegmentProxyArtifact:
     item_id: str
     segment_id: str
     dense_features: Tensor
     sparse_features: dict
-    metadata: dict
+
+
+class SegmentProxyRef:
+    item_id: str
+    segment_id: str
+    feature_ref: ResourceRef
+    metadata: JsonObject
 ```
 
 ---
@@ -122,17 +132,18 @@ class SegmentProxy:
 ## 6. Segment Store
 
 ```python
-class SegmentStore:
-    def load_by_item(self, item_id: str):
-        ...
-
-    def get_unobserved_segments(
+class SegmentStore(Protocol):
+    def load_catalog(
         self,
-        candidate_ids: list[str],
-        evidence_state,
-    ):
+        item_ids: tuple[str, ...],
+    ) -> tuple[ItemSegmentCatalog, ...]:
         ...
 ```
+
+P1-03 已确认 Store 只返回静态 metadata/references，不根据 Observation State
+执行策略过滤。每个请求 item 都必须有显式 `ItemSegmentCatalog` entry；未观察
+segment 从 Recommendation State 做确定性投影。权威接口和缺失资源语义见
+[`00_component_interfaces.md`](00_component_interfaces.md)。
 
 ---
 

@@ -121,7 +121,7 @@ Status: `Confirmed`
 
 需要确认：
 
-- Phase 1 的 `remaining_budget` 是否只表示剩余 perception action 次数。
+- Phase 1 的 `remaining_perception_actions` 是否只表示剩余 perception action 次数。
 - 是否现在就定义可扩展的 `BudgetState`，为 token/frame/latency cost 留接口。
 - step 从 0 还是 1 开始。
 - step 表示 decision iteration，还是 successful perception count。
@@ -191,8 +191,8 @@ Decision:
    Stop threshold 配置化；更丰富或 learned uncertainty 延后。
 8. RecommendationState 必须完全 JSON serializable，并包含显式
    schema_version 和 run_id。核心字段不能藏在自由 metadata 中；dataset、
-   feature、component 和 code versions 记录在 run manifest、trace 或带版本
-   reference 中。
+   feature、component 和 code versions 记录在 resolved config、Trace、Result
+   或带版本 reference 中。
 Rationale:
 保持 Agent loop 的状态一致性、确定性、可回放性和模型/存储解耦，同时避免
 将 Phase 1 扩展成真实算法、长上下文或多维成本系统。
@@ -206,10 +206,12 @@ RecommendationStateBuilder.
 Affected docs/tests:
 docs/01_dynamic_hybrid_user_memory.md, docs/03_recommendation_state.md,
 docs/07_evidence_score_update.md; P1-02 schemas and P1-09 tests.
+Resolved follow-up:
+P1-03 已确认组件最小输入和独立 ObservationUpdater ownership；P1-05 已确认
+完整状态机。
 Deferred follow-up:
-P1-03 确认组件最小输入和 Observation ownership；P1-05 确认完整状态机；
-P1-06 确认 stop reason priority；P1-07 确认 trace/replay layout；Phase 4
-讨论真实 MLLM retry/repair、prompt context 和 token/frame/latency cost。
+P1-06 已确认 stop reason priority；P1-07 已确认 trace/replay layout；Phase 4
+讨论真实 MLLM retry/repair、prompt context 和 token/frame/latency telemetry。
 Confirmed by: User
 Date: 2026-07-30
 ```
@@ -237,22 +239,32 @@ Status: `Confirmed`
 
 ### 本 Gate 涉及的对象
 
-- `PreferenceAtom`
-- `UserMemoryState`
+- `ResourceRef`
+- `PreferenceState`
+- `PreferenceMatchType`
+- `ObservationStatus`
+- `PreferenceAtomView`
+- `PreferenceMatchView`
+- `UserMemoryView`
 - `InitialRankingOutput`
 - `SegmentMeta`
-- `SegmentProxy`
+- `SegmentProxyRef`
 - `CandidateState`
 - `RecommendationState`
 - `InformationNeed`
 - `Evidence`
 - `ItemEvidenceState`
 - `EvidenceState`
+- `ItemObservationState`
+- `ObservationState`
 - `SegmentValueInput`
 - `SegmentValue`
 - `StopDecision`
 - `AgentStepTrace`
 - `AgentRunResult`
+
+Memory 内部的 `PreferenceAtom`、`UserMemoryState` 和 Tensor 不属于公共 Domain
+Schema；P1-02 只确认它们通过 `UserMemoryView`/`ResourceRef` 穿越模块边界。
 
 ### P1-02 的交付结果
 
@@ -267,7 +279,9 @@ Status: `Confirmed`
 Decision ID: P1-02
 Status: Confirmed
 Decision:
-1. 公共 domain schema 使用 strict、frozen Pydantic models，并禁止未声明字段。
+1. 公共 domain schema 使用 Pydantic v2 strict、frozen models，并禁止未声明
+   字段。Frozen 保证顶层字段不可重新赋值；嵌套 JSON payload 在 validation
+   时复制并按只读契约使用，任何更新都构造新对象。
 2. 所有 user/item/segment/atom/evidence/need/run ID 使用非空 str。
 3. 公共 domain objects 不可变；Updater 返回新对象，内部实现可以使用局部可变
    数据结构。
@@ -276,23 +290,33 @@ Decision:
 5. strength、persistence、confidence 使用 [0, 1]；cosine similarity 使用
    [-1, 1]；rank 从 1 开始；step/action counters 非负；score 和 segment value
    只要求为 finite float，不假设是概率，value 可以为负。
-6. None 表示未提供、不可用或尚未计算；空 collection 表示已经计算但结果为空。
+6. None 表示未提供、不可用或尚未计算；`T | None` 默认并显式序列化为 null。
+   空 collection 表示已经计算但结果为空，语义 collection 不用默认空值掩盖
+   “尚未计算”。
 7. domain 中不允许 Tensor、ndarray、model、tokenizer、Store、file handle 或
    arbitrary Python object。所有大型/模型相关数据使用 ResourceRef；加载后的
    tensor batch 属于具体模型实现。
-8. 固定状态使用 Enum。PreferenceState 和 ObservationStatus 在 P1-02 定义；
-   StopReason 的值在 P1-06 确认。
+8. 固定状态使用 Enum。PreferenceState、PreferenceMatchType 和
+   ObservationStatus 在 P1-02 定义；StopReason 的值由 P1-06 补充确认。
 9. 独立持久化的顶层 RecommendationState、AgentStepTrace 和 AgentRunResult
    带 schema_version。metadata 只能保存非核心 JSON-compatible 扩展字段。
-10. 共享 schema 按 refs、memory、ranking、segments、evidence、state、
+10. Evidence 与 Observation 使用独立 runtime state。EvidenceState 只保存有效
+    Evidence；ObservationState 是 attempt/status 的唯一事实来源；CandidateState
+    中对应字段是 Builder 生成的只读派生快照。
+11. 共享 schema 按 refs、memory、ranking、segments、evidence、state、
     decisions、trace 和 serialization 分模块维护；domain/__init__.py 只导出
     稳定公共类型。
+12. Schema validators 必须检查 ID uniqueness、ranking continuity、reference
+    identity、Evidence/Observation consistency 和 budget equation 等跨字段
+    invariants。
 Schema inventory:
+PreferenceState; PreferenceMatchType; ObservationStatus;
 ResourceRef; PreferenceAtomView; PreferenceMatchView; UserMemoryView;
 InitialRankedCandidate; InitialRankingOutput; SegmentMeta; SegmentProxyRef;
 Evidence; SegmentObservationState; ItemEvidenceState; EvidenceState;
+ItemObservationState; ObservationState;
 CandidateState; RankingUncertainty; RecommendationState; InformationNeed;
-CandidateSegmentRef; SegmentValueInput; SegmentValue; StopDecision;
+CandidateSegmentRef; SegmentValueInput; SegmentValue; StopReason; StopDecision;
 AgentStepTrace; AgentRunResult.
 Rationale:
 以严格、可序列化、不可变的公共契约支持 deterministic replay，并防止模型实现、
@@ -303,18 +327,52 @@ Alternatives considered:
 Affected docs/tests:
 docs/00_shared_domain_schemas.md；各模块文档中的 schema 示例；P1-09 schema
 validation/serialization tests。
+Resolved follow-up:
+P1-03 已确认接口参数、最小可见范围和 updater ownership。
 Deferred follow-up:
-P1-03 确认接口参数和 ownership；P1-06 确认 StopReason；P1-07 补全
-AgentStepTrace、AgentRunResult 和持久化布局。
+P1-06 已补全 StopReason；P1-07 已补全 AgentStepTrace、AgentRunResult 和
+持久化布局。
 Confirmed by: User
 Date: 2026-07-30
+
+Consistency review:
+2026-07-31 对 P1-02 做跨文档复核，补充 Pydantic frozen 的浅层不可变边界、
+PreferenceMatchType、独立 ObservationState 和跨对象 validators。这些修正只消除
+Schema 歧义，不改变 User Memory、Ranking、Perception 或 Score Update 的业务
+流程与研究选择。
 ```
+
+### P1-02 Review Conclusion
+
+Status: `Confirmed with consistency corrections`
+
+复核结论：P1-02 的总体设计适合 Phase 1，可以继续作为公共 Domain Contract。
+以下选择保持有效：
+
+- Pydantic v2 strict/frozen 顶层模型
+- 非空 string IDs 和明确的 millisecond timestamps
+- finite/range validation
+- `None` 与空 collection 的不同语义
+- Tensor/模型资源通过 `ResourceRef` 隔离
+- Enum、schema version 和禁止 extra fields
+
+本次只补强四个工程一致性问题：
+
+1. 明确 frozen 是浅层保护，嵌套 JSON payload 必须 copy-on-validation 并按只读
+   契约使用。
+2. 将 Evidence 与 Observation runtime state 分开，避免两个事实来源。
+3. 使用独立 `PreferenceMatchType`，避免 atom state 与 match classification
+   混用。
+4. 增加 ID、ranking、reference、observation 和 budget 的跨对象 validators。
+
+P1-03 已完成组件签名和 ownership；P1-06 已完成 StopReason 和 stop priority；
+P1-07 已完成 AgentStepTrace/AgentRunResult。
 
 ---
 
 ## 5. P1-03 — Component Interfaces and Ownership
 
-Status: `Pending`
+Status: `Confirmed`
 
 本 Gate 只讨论组件怎样协作，不讨论真实算法内部怎样计算。
 
@@ -322,7 +380,8 @@ Status: `Pending`
 
 - 每个接口的准确输入和输出。
 - 接口接收完整 State，还是最小必要参数。
-- 返回新对象，还是允许原地更新传入对象。
+- 公共 domain object 已确认不能原地修改；需要确认由哪个组件构造并返回新对象。
+- Observation transition 由 Controller、独立 Updater 还是其他组件负责。
 - Store 返回 copy、view 还是不可变对象。
 - V1 接口是 synchronous 还是需要为 async perception 预留 adapter。
 - batch API 是否现在需要，还是延后。
@@ -342,6 +401,7 @@ Status: `Pending`
 - `SegmentValueModel`
 - `SegmentPerceiver`
 - `EvidenceUpdater`
+- Observation transition owner / optional `ObservationUpdater`
 - `ScoreUpdater`
 - `StopPolicy`
 - `TraceWriter`
@@ -353,11 +413,64 @@ Status: `Pending`
 - error contract
 - Mock 与未来真实实现必须共同满足的行为约束
 
+### P1-03 Decision Record
+
+```text
+Decision ID: P1-03
+Status: Confirmed
+Decision:
+1. Phase 1 component interfaces 使用 synchronous typing.Protocol，不要求继承
+   共同业务父类；async/concurrent MLLM 留到 Phase 4。
+2. 默认最小输入权限。Information Need 和 Stop Policy 可以消费全局决策状态；
+   Perceiver、Updater、Stores 等只获得职责所需输入，不能读取 Controller globals。
+3. 简单操作使用显式参数；复杂操作使用 strict/frozen interface DTO。新增：
+   ComponentDescriptor, CandidateScore, ItemFeatureRef, ItemSegmentCatalog,
+   RecommendationStateBuildRequest, PerceptionRequest, PerceptionResult,
+   ScoreUpdateRequest。
+4. Evidence 与 Observation 分别由 pure EvidenceUpdater 和 ObservationUpdater
+   返回新状态。Perceiver 只返回 PerceptionResult，不管理 Agent runtime state；
+   Controller 只编排已确认的转换顺序。
+5. 可预期 perception failure 使用 typed failed PerceptionResult，不创建空/伪
+   Evidence。契约错误、资源解析错误和不可恢复执行错误分别使用 ContractError、
+   ResourceResolutionError 和 ComponentExecutionError。
+6. InitialRanker、Stores 和 SegmentValue 使用天然 batch；SegmentPerceiver
+   一次只观察一个已选 segment。Segment Value output 必须与 input segments
+   一一覆盖；不得 duplicate、missing 或 extra。
+7. Store 只发布静态 metadata/references，不执行 Observation filtering 或策略。
+   每个请求 item 必须有显式返回 entry，不能静默遗漏。
+8. 每个 component 暴露只读 ComponentDescriptor(role, implementation, version)；
+   P1-07 已确认 descriptors 只在 AgentRunResult 保存一次，P1-08 已确认由
+   Bootstrap 收集并在构造 Controller 时注入。
+9. StopPolicy 的 pre/post-value 方法、StopReason 和 priority 已由 P1-06
+   确认；TraceWriter 的完整方法和失败语义已由 P1-07 确认。
+Complexity guardrails:
+Phase 1 不引入 async controller、DI framework、plugin registry、generic repository、
+event bus、通用 Result[T, E] 或多层 BaseComponent。
+Rationale:
+用最少接口隔离 Mock 与未来真实实现，同时防止组件获得不必要的全局状态、隐藏
+mutation 或把正常 perception failure 伪装成异常/空 Evidence。
+Alternatives considered:
+ABC inheritance、所有组件接收完整 RecommendationState、Controller 直接修改
+Observation、Perceiver 返回更新后 State、exception-only failure、全接口 async、
+逐 segment Value 调用、Store 执行 runtime policy filtering。
+Affected docs:
+docs/00_component_interfaces.md；docs/02—09 的接口示例；P1-04 Mock contracts；
+P1-05 Controller state machine；P1-09 interface/integration tests。
+Resolved follow-up:
+P1-05 已确认 attempt_step、异常后的 run 行为和完整调用顺序；P1-06 已确认
+StopPolicy 的签名、taxonomy 和 priority；P1-07 已确认 TraceWriter；P1-08 已确认
+Bootstrap 通过稳定 ID 和显式 constructor mapping 实例化 Protocol implementations。
+Deferred follow-up:
+Phase 4 重新评估 async MLLM adapter。
+Confirmed by: User
+Date: 2026-07-31
+```
+
 ---
 
 ## 6. P1-04 — Deterministic Mock Scenario
 
-Status: `Pending`
+Status: `Confirmed`
 
 Mock 场景必须足以验证 Agent 行为，但不能暗中成为真实算法 baseline。
 
@@ -389,49 +502,103 @@ Mock 场景必须足以验证 Agent 行为，但不能暗中成为真实算法 b
 - 至少一个完整 expected run
 - 不属于真实研究算法的明确声明
 
+权威 Mock specification 见
+[`../docs/00_deterministic_mock_scenario.md`](../docs/00_deterministic_mock_scenario.md)。
+
+### P1-04 Decision Record
+
+```text
+Decision ID: P1-04
+Status: Confirmed
+Decision:
+1. Canonical mock-v1 使用一个主用户、三个 candidates，每个 candidate 两个
+   segments；candidate 顺序固定为 item_a、item_b、item_c。
+2. Mock User Memory 同时包含 stable plot-twist、emerging AI-visuals 和
+   fading slow-drama signals。Information Need 通过固定 memory signature
+   查表并引用 plot-twist atoms，只验证 Memory 消费路径，不实现 NTD 或真实
+   need estimation。
+3. Initial scores 为 A=0.81、B=0.79、C=0.61。第一个被选择的 segment 必须是
+   rank-2 的 B.segment_1，其 value=0.90，是全部六个 segment 中的最大值。
+4. B.segment_1 产生 evidence_b_1，并将 B 的 Mock score 更新为 0.87，使
+   ranking 从 A>B>C 变为 B>A>C。
+5. Canonical run 执行两次 perception。第二步不得再次枚举 B.segment_1，
+   选择 A.segment_2；最终 scores 为 B=0.87、A=0.78、C=0.61，budget 归零。
+6. 所有 Mock component 使用 versioned fixture 完全查表。canonical run 记录
+   seed=7，但不依赖 pseudo-random behavior。
+7. 主场景预期走 budget-exhausted 退出路径；zero-budget、high-certainty、
+   no-segments、low-values、perception-failed 和 component-exception 使用
+   最小 fixture overrides。P1-05 已确认正常 failure continuation 和 exception
+   termination；P1-06 已确认 stop taxonomy 和 priority。
+8. Fixture 和 semantic expected run 以 mock-v1 纳入版本控制。精确 JSONL
+   golden trace 按 P1-07 已确认的 Trace Schema 在 P1-09 实现。
+9. Mock score delta、Evidence attributes 和 Value numbers 都只是测试映射，
+   不构成 User Memory、Information Need、Segment Value、Evidence
+   aggregation 或 Score Update 的真实 baseline。
+Rationale:
+用最小的两步场景同时证明跨 item 全局选段、rank-2 优先感知、Evidence 驱动
+换位、已观察 segment 排除、累计状态重建、未观察 item prior 保留和 budget
+扣减；完全查表保证 expected run 稳定且不会暗中固化研究算法。
+Alternatives considered:
+单 candidate/两个 candidates、每个 item 一个 segment、只运行一次 action、
+首先观察 rank-1、随机生成 scores/evidence、在 P1-07 前锁定 JSONL golden
+format。
+Affected docs:
+docs/00_deterministic_mock_scenario.md；Phase 1 Mock implementations；
+P1-05 Controller state machine；P1-06 Stop Policy；P1-07 golden trace；
+P1-09 integration/E2E tests。
+Resolved follow-up:
+P1-05 已确认 exact state-transition order 和失败后的 run 行为；P1-06 已确认
+StopReason/priority/threshold semantics；P1-07 已确认 trace fields，实现在
+P1-09 固化 golden JSONL assertions；P1-08 已确认 fixture/config bootstrap。
+Confirmed by: User
+Date: 2026-07-31
+```
+
 ---
 
 ## 7. P1-05 — Controller State-Transition Order
 
-Status: `Pending`
+Status: `Confirmed`
 
-### 建议讨论的完整顺序
+### 已确认的完整顺序
 
 ```text
-build user memory
-→ load candidates and segments
-→ initial rank
-→ create empty evidence state
-→ build recommendation state
+validate run input
+→ one-time User Memory / Stores / Initial Ranking initialization
+→ create empty Evidence and Observation States
+→ build step-0 Recommendation State
+→ enter budget-derived safety guard
 → pre-value stop check
-→ estimate information need
-→ enumerate unobserved segments
-→ predict segment values
+→ estimate Information Need
+→ project all unobserved segments
+→ batch Segment Value prediction
+→ deterministic best-value lookup
 → post-value stop check
-→ select segment
-→ perceive
-→ update evidence
-→ update scores
+→ perceive selected segment
+→ stage Observation/Evidence transition
+→ update scores on success
 → update budget and step
-→ write trace
-→ rebuild state
+→ rebuild Recommendation State
+→ emit completed transition
+→ next iteration
 ```
 
-以上是待确认的执行顺序，不因出现在文档中就自动视为最终决定。
+Declared exception 和 partial-progress 路径以 Decision Record 和
+`docs/08_agent_controller.md` 为准。
 
-### 需要确认
+### 已解决的讨论问题
 
-- Information Need 在第一次 stop check 之前还是之后计算。
-- 无 unobserved segments 时由 Store、Controller 还是 Stop Policy 处理。
-- empty value output 的行为。
-- segment value 并列时的选择规则。
-- Evidence update 与 observed 标记的先后顺序。
-- score update 失败时是否保留 Evidence。
-- trace 在每个动作前写、动作后写，还是一次写完整 step。
-- budget 和 step 在 perception 前还是成功后更新。
-- perception/parse failure 是 retry、skip、stop 还是显式 failed step。
-- Controller 是否需要 maximum-loop safety guard。
-- Controller 返回 ranking，还是完整 `AgentRunResult`。
+本 Gate 讨论并解决了：
+
+- Information Need 与 pre-value stop 的先后顺序。
+- no-unobserved、empty value 和 output coverage 的处理。
+- Segment Value tie-break。
+- Evidence、Observation、score 和 counters 的发布边界。
+- ScoreUpdater 失败时 Evidence 是否保留。
+- completed transition 和 terminal trace 的逻辑时机。
+- 正常 failed result 与 declared exception 的不同控制流。
+- budget-derived maximum-loop safety guard。
+- Controller 的完整 `AgentRunResult` 返回边界。
 
 ### P1-05 的交付结果
 
@@ -440,36 +607,98 @@ build user memory
 - Controller 的职责边界
 - 每种退出路径的结果结构
 
+权威 Controller state machine 见
+[`../docs/08_agent_controller.md`](../docs/08_agent_controller.md)。
+
+### P1-05 Decision Record
+
+```text
+Decision ID: P1-05
+Status: Confirmed
+Decision:
+1. 先验证 run input；空或重复 candidate ID 是启动前 ContractError。User
+   Memory、static Stores、Initial Ranker、empty Evidence/Observation 初始化和
+   step-0 State build 只在 loop 外执行一次。
+2. 每轮首先执行 pre-value stop；只有 continue 时才估计 Information Need、
+   projection unobserved segments 并批量调用 Segment Value Model。Value 后、
+   Perceiver 前执行 post-value stop。
+3. remaining action 为 0 或没有 unobserved segment 时，pre-value StopPolicy
+   必须停止。若 policy 错误地 continue，Controller 抛出 ContractError，不允许
+   超预算 action，也不对空 segments 调用 Value Model。非空 input 对应
+   empty/missing/extra Value output 同样是 ContractError。
+4. Segment Value 并列时按 (item_id, segment_id) 升序打破并列。
+5. 正常 success result 先产生 staged Observation/Evidence transition，只在合法
+   update 后发布新 State；ScoreUpdater 只在 success 时调用。
+6. 正常 failed result 标记 segment failed，不创建 Evidence、不改变 scores，
+   但增加 step、扣减 action、重建 State；不重试该 segment，仍有可行动作时
+   继续 loop。
+7. attempt_step = current State.step + 1，并等于本次正常 result 完成后新 State
+   的 step；remaining = max_perception_actions - step。
+8. ScoreUpdater 失败时保留已成功取得并验证的 Evidence、Observation 和本次
+   action counter，scores 保留上一版，随后以 component failure 终止。
+   EvidenceUpdater/ObservationUpdater 失败时不发布不一致 post-State，保留最后
+   一个合法 State，并在 terminal result/trace 中记录 attempt/error。
+9. ContractError、ResourceResolutionError 和 ComponentExecutionError 都终止
+   当前 run，不自动继续或伪造空输出；未声明的编程异常向外传播。
+10. 正常 action 在 post-State rebuild 后提交 completed transition；pre/post
+    stop 提交 terminal outcome；declared exception 提交 terminal failure。
+    JSONL/event 字段和写入失败语义留给 P1-07。
+11. Controller 最多允许 max_perception_actions + 1 次 decision-loop 进入，并
+    返回完整 AgentRunResult，而不是只返回 ranking。Result 字段留给 P1-07。
+Rationale:
+先排除无需行动的状态，再计算 Need/Value；每个正常 Perceiver result 对应一次
+清晰、可重建的 counter/state transition。正常 perception failure 可以继续，
+结构/资源/组件异常则终止，避免隐藏错误或发布跨对象不一致 State。Controller
+只保留 orchestration、确定性 projection/tie-break 和安全控制，不承载研究逻辑。
+Alternatives considered:
+每轮重新构建 Memory/initial ranking；Information Need 在 pre-stop 前计算；
+Store 过滤 observed segments；Value Model 返回空时静默停止；并列随机选择；
+failed perception 直接终止或自动重试；异常转换为空 Evidence；Controller 只返回
+ranking；无 hard safety guard。
+Affected docs:
+docs/08_agent_controller.md；docs/00_component_interfaces.md；
+docs/07_evidence_score_update.md；docs/00_deterministic_mock_scenario.md；
+P1-06 Stop contract；P1-07 Trace/Result；P1-09 state-machine tests。
+Resolved follow-up:
+P1-06 已确认 StopPolicy 精确签名、StopReason、priority、threshold 和异常
+action 的 budget accounting；P1-07 已确认 AgentStepTrace/AgentRunResult、
+terminal attempt 和 writer failure semantics；P1-08 已确认 AgentRunRequest 和
+run input/bootstrap。
+Confirmed by: User
+Date: 2026-07-31
+```
+
 ---
 
 ## 8. P1-06 — Budget and Stop Semantics
 
-Status: `Pending`
+Status: `Confirmed`
 
 本 Gate 讨论控制语义，不确定最终 learned stop policy。
 
-### 需要确认
+### 已确认范围
 
-- Phase 1 budget 的基本单位。
-- 是否同时记录 action、frame、token、latency 的占位 cost fields。
-- budget 为零时是否仍构造并记录 step-0 State。
-- perception 调用失败是否消耗 budget。
-- Stop Policy 的两个调用位置是否保留。
-- stop reasons 使用 enum 还是自由文本。
-- 多个条件同时满足时的 reason 优先级。
-- ranking certainty stop 在 Phase 1 使用 Mock signal 还是 configurable margin baseline。
-- low segment value stop 使用 Mock signal 还是 configurable numeric threshold。
-- 是否允许显式 external cancellation。
+- Phase 1 budget 只表示 perception action 次数。
+- 不增加多维 BudgetState、PerceptionCost 或 frame/token/latency 占位 schema。
+- budget 为零仍构造 step-0 State。
+- succeeded、failed 和 Perceiver declared exception 的 action accounting 明确。
+- Stop Policy 使用 pre-value/post-value 两个显式方法。
+- stop reasons 使用 enum 和确定性 priority。
+- ranking certainty 使用 configurable margin threshold。
+- low segment value 使用 configurable numeric threshold。
+- Phase 1 不支持结构化 external cancellation。
 
-### 至少需要表达的停止原因
+### Stop reasons
 
 - budget exhausted
 - ranking sufficiently certain
 - no unobserved segments
 - maximum segment value too low
-- invalid or empty candidate set
 - component failure
 - safety limit reached
+
+空或重复 candidate input 已由 P1-05 确认为 run 启动前 `ContractError`，不进入
+正常 StopReason taxonomy。
 
 ### P1-06 的交付结果
 
@@ -479,41 +708,102 @@ Status: `Pending`
 - 两阶段 stop control flow
 - budget/step 更新不变量
 
+权威 Budget/Stop specification 见
+[`../docs/08_agent_controller.md`](../docs/08_agent_controller.md)；公共 enum 和
+StopDecision invariants 见
+[`../docs/00_shared_domain_schemas.md`](../docs/00_shared_domain_schemas.md)。
+
+### P1-06 Decision Record
+
+```text
+Decision ID: P1-06
+Status: Confirmed
+Decision:
+1. Phase 1 只使用一维 action budget：max_perception_actions >= 0，
+   remaining_perception_actions = max_perception_actions - step。不得新增多维
+   BudgetState、PerceptionCost 或 frame/token/latency/cost placeholder schema，
+   也不修改 PerceptionResult 增加这些字段。真实 MLLM telemetry 留到对应阶段。
+2. Zero-budget run 仍执行 cheap/static initialization 并构造 step-0 State，然后
+   以 budget_exhausted 停止；不调用 Information Need、Value 或 Perceiver。
+3. 调用 SegmentPerceiver.observe() 是 action 消费边界。succeeded、failed 和
+   Perceiver declared exception 各消耗一次；pre/post stop 和 Perceiver 前的
+   exception 不消耗，后续 updater exception 不重复消耗。无法发布 post-State
+   时由 P1-07 terminal record 表达已消费 action，不伪造非法 State。
+4. StopPolicy 暴露 decide_pre_value(state) 和
+   decide_post_value(state, best_segment_value)。post-value 只接收 Controller
+   确定性选出的最佳 SegmentValue，不接收完整 batch 或隐藏全局状态。
+5. StopReason 固定为 budget_exhausted、ranking_sufficiently_certain、
+   no_unobserved_segments、max_segment_value_too_low、component_failure 和
+   safety_limit_reached。空/重复 candidate input 是启动前 ContractError。
+6. ranking certainty 使用 configurable top1_top2_margin threshold，满足
+   margin >= threshold 时停止；margin=None 时跳过。Low-value 使用 configurable
+   minimum threshold，满足 best value < threshold 时停止。None 表示关闭相应
+   可选 condition。
+7. mock-v1 使用 max actions=2、ranking margin threshold=0.10、
+   min segment value=0.15，确保 canonical 两步运行最终以 budget_exhausted
+   停止；high-certainty override 使用 0.01，low-values 的最大值低于 0.15。
+8. Terminal priority 为 safety_limit_reached > component_failure >
+   budget_exhausted > no_unobserved_segments >
+   ranking_sufficiently_certain > max_segment_value_too_low。正常 failed
+   perception 本身不是 StopReason；提交 State 后由下一轮条件决定。
+9. StopDecision continue 时 stop=False/reason=None；terminal 时
+   stop=True/reason 必须存在。details 只保存结构化诊断信号，不能用自由文本
+   reason 或隐藏字段驱动控制。
+10. Phase 1 不增加 cancellation token 或 external_cancelled reason。同步
+    interrupt 由 CLI/进程入口处理，async/service cancellation 留到未来讨论。
+Rationale:
+保持 Phase 1 的控制面只有一次一次的 perception action，使用透明、可配置的
+margin/value thresholds 验证两阶段 stop mechanics；typed reason 和确定优先级
+保证每个退出可测试、可回放。真实 MLLM 的 frames/tokens/latency 是后续实验
+telemetry，不应在 Mock 阶段以空占位 schema 提前引入。
+Alternatives considered:
+多维 BudgetState；新增 PerceptionCost/usage telemetry；零预算时跳过 step-0
+State；Mock boolean certainty/low-value signals；自由文本 reason；无优先级；
+完整 Value batch 输入 StopPolicy；Phase 1 cancellation token。
+Affected docs:
+docs/00_shared_domain_schemas.md；docs/00_component_interfaces.md；
+docs/08_agent_controller.md；docs/00_deterministic_mock_scenario.md；
+P1-07 Trace/Result；P1-09 stop tests。
+Deferred follow-up:
+P1-07 已确认异常路径的 terminal attempted-action 字段和 StopDecision 在 trace
+中的布局；Phase 4/真实 MLLM 阶段再讨论 processed frames、tokens、latency、
+duration 等 telemetry。
+Confirmed by: User
+Date: 2026-07-31
+```
+
 ---
 
 ## 9. P1-07 — Trace, Replay, and Reproducibility
 
-Status: `Pending`
+Status: `Confirmed`
 
-### 需要确认
+### 已确认范围
 
-- 每个 run 的目录命名和 run ID。
-- trace 是一个 step 一行 JSONL，还是 event-based JSONL。
-- step trace 保存完整 State，还是保存 before/after 摘要。
-- 是否保存所有 segment values。
-- 是否保存 Mock/MLLM raw output。
-- 大型 embeddings 和 features 是内嵌、引用还是排除。
-- resolved config 保存格式。
-- seed、dataset version、component version 和 Git commit 是否必填。
-- final result 与 trace 分开还是合并保存。
-- replay 是重放已保存输出，还是重新执行 deterministic components。
-- 日志写入失败是否中断 Agent。
-- 用户数据和媒体路径需要怎样脱敏。
+- 每个 run 固定保存 resolved config、JSONL trace 和独立 final result。
+- 一次 decision-loop 一行，不使用细粒度 event stream。
+- State 使用链式完整 snapshot，避免相邻 before/after 重复。
+- 保存本轮全部轻量 SegmentValue，不保存 Tensor/raw payload。
+- seed、data version、component descriptors 和 Git 状态进入 Result。
+- 正式 replay 读取已保存 artifacts，不重新调用 components。
+- deterministic Mock re-execution 是独立测试。
+- TraceWriter failure 中断 Agent。
+- Phase 1 只记录 synthetic/pseudonymous data。
 
-### 最小 Trace 候选字段
+### AgentStepTrace 字段
 
-- step
-- ranking and scores before
-- Recommendation State summary
+- schema/run/decision identity
+- chained state before/after
 - Information Need
-- candidate segment values
-- selected segment
-- Evidence
-- scores and ranking after
-- budget before/after
-- stop decision and reason
-- component versions
-- timing and cost placeholders
+- all candidate Segment Values
+- selected SegmentMeta and SegmentValue
+- PerceptionResult
+- action-consumed flag
+- terminal StopDecision
+- JSON metadata
+
+明确不增加 timing/cost placeholders、raw response、feature Tensor 或每行重复的
+component versions。
 
 ### P1-07 的交付结果
 
@@ -523,36 +813,112 @@ Status: `Pending`
 - run-directory layout
 - deterministic replay definition
 
+权威 specification 见
+[`../docs/00_trace_replay.md`](../docs/00_trace_replay.md)。
+
+### P1-07 Decision Record
+
+```text
+Decision ID: P1-07
+Status: Confirmed
+Decision:
+1. 每个 run 使用 runs/<run_id>/resolved_config.json、trace.jsonl 和 result.json，
+   不新增 manifest。普通 run ID 为 UTC timestamp 加 8 位随机十六进制，不包含
+   业务 ID；canonical golden run ID 固定为 mock-v1-golden。已有目录不得静默
+   覆盖。
+2. Resolved config 使用稳定 JSON，保存单父继承合并和 validation 后的完整 typed
+   configuration，保留显式 null，不保存 secret；P1-08 runner 在 Controller 前
+   写入。
+3. Trace 每次 decision-loop 一行，不拆成 event stream。Canonical mock-v1 为
+   两条 completed action records 加一条 pre-value budget stop，共三行。
+4. Trace 使用完整但链式的 State：第一条保存 state_before，每次合法 transition
+   保存 state_after，后续 current State 从上一条 state_after 得到且不重复保存
+   state_before。Zero-budget/first-terminal record 保存 step-0 State；Result
+   额外保留一份 final State 方便独立读取。
+5. AgentStepTrace 只保存 schema/run/decision identity、chained States、
+   InformationNeed、全部 SegmentValues、selected SegmentMeta/SegmentValue、
+   PerceptionResult、action_consumed、terminal StopDecision 和 metadata。不增加
+   TraceOutcome、StopStage 或 AgentError schema。
+6. Value Model 被调用后保存所有轻量 SegmentValue，以验证 coverage、argmax、
+   tie-break 和 low-value stop。Tensor、embedding、media 和 raw MLLM output
+   不内嵌，只使用已有 ResourceRef；不增加 timing/cost placeholders。
+7. AgentRunResult 保存 success flag、final State、terminal StopDecision、
+   attempted actions、trace count、seed、data version、component descriptors、
+   git commit/dirty 和 metadata。Final ranking 从 final State 派生，不重复存储；
+   declared error 使用 StopDecision.details。
+8. Result 中 seed、data/fixture version、component descriptors 和 Git fields
+   必须存在；Git metadata 无法获得时允许 null，dirty run 明确标记。
+9. 正式 replay 读取 resolved config、trace 和 result，顺序重建并验证 State
+   chain、budget、selection、Evidence/Observation、stop 和 Result，不重新调用
+   components，也不重新计算真实模型 score。
+10. Deterministic Mock re-execution 是独立测试；使用相同 resolved config、
+    seed、固定 run ID 和固定 nullable test Git metadata，要求 trace/result 精确
+    一致。普通 run 仍记录真实 Git metadata。
+11. TraceWriter 暴露 write_step 和 write_result。每条 record validation 后以
+    UTF-8 JSONL 写入并 flush；任何 write failure 抛 ComponentExecutionError
+    并终止 run，result write failure 不能报告成功。
+12. Phase 1 只使用 synthetic Mock users，不保存 raw history、secret、绝对媒体
+    路径或 stack trace。TraceWriter 不 hash/修改 State；真实用户数据脱敏在
+    进入真实数据阶段前单独确认。
+Rationale:
+用最少三个 artifacts 完整记录每次控制决策。链式 State 避免相邻快照重复，
+逐行 flush 避免内存随 run 增长；全量轻量 SegmentValue 保留决策审计能力，而
+Tensor/raw payload 继续通过 references 隔离。Saved-output replay 不会在未来
+意外重调真实 MLLM。
+Alternatives considered:
+event-based JSONL；每行重复 before/after State；State summary/delta schema；
+只保存最大 SegmentValue；inline Tensor/raw output；额外 manifest；
+TraceOutcome/AgentError schema；replay 重新执行 components；trace failure 后
+继续 Agent；timing/cost placeholders。
+Affected docs:
+docs/00_trace_replay.md；docs/00_shared_domain_schemas.md；
+docs/00_component_interfaces.md；docs/08_agent_controller.md；
+docs/00_deterministic_mock_scenario.md；P1-08 run bootstrap；P1-09 golden/replay
+tests。
+Resolved follow-up:
+P1-08 已确认 run directory creation、resolved config writer、TraceWriter ownership
+和 CLI failure reporting。
+Deferred follow-up:
+P1-09 固化 trace/replay/re-execution test matrix；真实 per-run
+candidate-segment 规模经 profiling 证明 inline values 存在 I/O 问题后，再讨论
+artifact/reference，不提前加入。
+Confirmed by: User
+Date: 2026-07-31
+```
+
 ---
 
 ## 10. P1-08 — Configuration, Bootstrap, and CLI
 
-Status: `Pending`
+Status: `Confirmed`
 
 CLI 是薄入口；核心 Agent 必须可以被 Python 直接调用。
+本 Gate 只确认配置加载、组件组装和运行入口，不改变 P1-01—P1-07 已确认的
+Agent 算法、状态机、Stop semantics 或 Trace/Result contract。
 
-### 需要确认
+### 已确认范围
 
-- 配置使用单文件、分组文件还是组合式 overrides。
-- Phase 1 是否引入第三方 config framework。
-- 配置 schema 是否做类型校验。
-- component implementation 如何通过配置选择。
-- path 是相对 repository、config file 还是 current working directory。
-- bootstrap/factory 的职责边界。
-- Python API 的最小调用方式。
-- CLI 使用 `python -m ...` 还是安装后的 console command。
-- 输入 fixture 从配置、文件还是命令参数指定。
-- output directory 冲突时覆盖、报错还是生成新 run ID。
-- CLI exit code 和错误输出约定。
+- `base.yaml`、`mock.yaml` 和 experiment config 使用单父配置确定性继承。
+- PyYAML 只解析 YAML，Pydantic v2 负责 strict/frozen typed validation。
+- component 只通过稳定 implementation ID 和显式 constructor mapping 选择。
+- 配置内路径使用规范化项目相对路径；`extends` 相对声明它的 YAML。
+- `mock-v1` run input 和查表数据来自 versioned fixture JSON。
+- Controller 使用单个 strict/frozen `AgentRunRequest`。
+- fixture loader、bootstrap、runner、Controller 和 CLI 各自保持单一职责。
+- CLI 只调用共享 `run_from_config()`，不复制组装、持久化或 Agent loop。
+- run directory 独占创建，不覆盖已有输出；resolved config 在 Controller 前写入。
+- exit code、stderr 和 unexpected exception 行为固定。
 
 ### 必须保持的边界
 
 ```text
 CLI
-→ load config
+→ call shared run_from_config(...)
+→ load/validate config and fixture
+→ create run directory and write resolved config
 → bootstrap components
-→ call AgentController.run(...)
-→ save/report result
+→ call AgentController.run(AgentRunRequest(...))
+→ report the TraceWriter-persisted result
 ```
 
 CLI 中不能实现 Information Need、Value selection、Score Update 或 Stop Policy。
@@ -565,6 +931,164 @@ CLI 中不能实现 Information Need、Value selection、Score Update 或 Stop P
 - Python API example
 - CLI invocation and output convention
 
+### 已确认 Python API
+
+底层调用接收已经完成 validation、run identity 和目录准备的输入：
+
+```python
+controller = build_controller(
+    config=config,
+    fixture=fixture,
+    run_dir=run_dir,
+)
+
+result = controller.run(
+    AgentRunRequest(
+        run_id=run_id,
+        user_id=user_id,
+        user_history=history,
+        candidate_ids=candidate_ids,
+    )
+)
+```
+
+高层实验入口统一完成外围 lifecycle：
+
+```python
+result = run_from_config("configs/mock.yaml")
+```
+
+CLI 只调用这个高层入口。
+
+### P1-08 Decision Record
+
+```text
+Decision ID: P1-08
+Status: Confirmed
+Decision:
+1. Phase 1 保留 configs/base.yaml、configs/mock.yaml 和 configs/experiments/。
+   配置只支持一个相对路径 extends，可以形成 experiment → mock → base 链；loader
+   必须按规范化文件路径检测循环。Mapping 递归合并，scalar 和 list 整体替换，
+   不做 list merge，也不支持 CLI key=value overrides。extends 不进入最终 typed
+   config；完整合并结果写入 resolved_config.json。
+2. 不引入第三方配置框架。YAML 使用 PyYAML.safe_load() 解析，最终合并 object
+   使用 Pydantic v2 strict、frozen、extra="forbid" models 验证。Phase 1 不使用
+   Hydra、OmegaConf、DI framework、environment-variable interpolation、Python
+   class import strings 或自动 plugin discovery；实现阶段才把 Pydantic v2 和
+   PyYAML 加入 dependencies。
+3. Phase 1 typed config 顶层固定为 schema_version、seed、data_version、run、
+   agent、stop、components 和 input。run 保存 output_root/run_id；agent 只保存
+   max_perception_actions；stop 保存可空 ranking_margin_threshold 和
+   min_segment_value；input 保存 fixture_path。不增加 timing、cost、token、frame
+   或真实模型参数。schema_version 固定为 "1"；seed 是非负 int；data_version
+   是非空字符串；max_perception_actions 是非负 int；ranking_margin_threshold
+   是 null 或非负 finite float；min_segment_value 是 null 或 finite float，允许为
+   负。run ID 和路径也必须显式验证；可用 component ID 按 role 限定，未知 ID
+   直接拒绝。
+4. Phase 1 component implementation ID 固定使用 mock、in_memory、default、
+   threshold 和 jsonl 等稳定短 ID。Bootstrap 对每个 role 使用显式 match 或
+   constructor mapping；以后新增真实实现时显式增加 ID 和 constructor，不允许
+   arbitrary import path、reflection-based construction 或隐式 discovery。
+5. --config 相对 shell working directory 解析。项目根目录是配置文件祖先中包含
+   pyproject.toml 的目录；找不到时启动失败。extends 必须是相对当前 YAML 文件
+   的路径，整个 extends chain 必须留在同一项目根目录。配置内部
+   fixture_path/output_root 必须是留在项目根目录内的规范化项目相对路径，
+   Phase 1 拒绝绝对路径和通过 .. 或 symlink 逃逸项目根目录的路径。
+   resolved_config.json 只保存规范化项目相对路径，不保存本机绝对路径。
+6. mock.yaml 只通过 input.fixture_path 指向
+   tests/fixtures/mock/v1/scenario.json。user_id、history、candidate_ids 和全部
+   Mock 查表数据保存在该 versioned JSON 中，不内嵌 YAML，也不拆成大量 CLI
+   flags。Runner 在创建 run directory 前加载并验证 fixture 一次，并验证 fixture
+   version 与 config.data_version 一致；Bootstrap 接收这个已验证 fixture，不得
+   再次读取。
+7. Controller run input 收敛为 strict/frozen AgentRunRequest(run_id, user_id,
+   user_history, candidate_ids)。Controller.run(request) 返回 AgentRunResult。
+   Budget、stop thresholds、seed、data version、components、descriptors 和可获得的
+   Git metadata 在构造 Controller 时注入，不在 Request 中重复。Request、resolved
+   config、State、Trace 和 Result 的实际 run ID 必须一致。
+8. Bootstrap 接收 validated config、已验证 fixture、run directory 和所需 runtime
+   metadata；显式实例化全部 Protocol implementations，将同一个 fixture object
+   传给相关 Mock components，创建绑定 run directory 的 TraceWriter，收集
+   component descriptors 并构造 AgentController。Bootstrap 不执行 loop、不计算
+   Need/Value、不选 segment、不修改 State、不实现 Stop Policy，也不使用 global
+   singleton 或 service locator。
+9. Python 提供两层调用。底层 build_controller(...) 返回使用相同公共契约的
+   AgentController，调用方显式传入 AgentRunRequest；高层 run_from_config(...)
+   负责 load/merge/validate config、一次性 fixture load、run ID/directory、resolved
+   config、Git metadata 收集和 bootstrap，然后调用同一个 Controller API。CLI
+   只调用 run_from_config()，不复制第二套流程。Trace/result 仍由 Controller 通过
+   注入的 TraceWriter 写入；runner 只负责 resolved config 和最终报告。
+10. Phase 1 只提供 python -m pave_rec.cli.run_mock --config configs/mock.yaml，
+    以及可选 --run-id mock-v1-golden。不添加 console script、交互式菜单或其他
+    research-parameter overrides。成功时 stdout 报告 run_id、output directory、
+    stop reason 和从 final State 派生的 final ranking。
+11. Run lifecycle 固定为：load/merge config → validate config → load/validate
+    fixture once → determine actual run ID → exclusively create run directory → write
+    resolved_config.json → bootstrap → Controller.run。--run-id 的显式值优先于
+    config.run.run_id；两者都为空时自动生成 P1-07 格式的 ID。显式 ID 必须符合
+    P1-07 允许的普通格式或 mock-v1-golden。已有显式 ID 报错且不覆盖；自动 ID
+    碰撞时重新生成。实际 ID 通过构造新的 frozen resolved config 写回
+    resolved_config.json，并进入 AgentRunRequest/State/Trace/AgentRunResult。
+12. Config/fixture/input validation 在创建 run directory 前失败，exit code=2 且
+    不产生 Agent artifacts。Bootstrap constructor failure 是 startup failure，
+    不伪装成 Agent decision；因为它发生在目录和 resolved config 已安全落盘后，
+    可以留下仅含 resolved_config.json 的失败 run directory，但不能伪造
+    trace.jsonl、result.json 或 StopDecision。Controller 启动后的 declared
+    component/trace failure 遵守 P1-05—P1-07。CLI exit code 固定为：0 表示
+    完整写入且
+    AgentRunResult.succeeded=True；1 表示 startup constructor、runtime、component
+    或 artifact/trace failure；2 表示 CLI/config/fixture/input validation failure；
+    130 表示 KeyboardInterrupt。Declared error 向 stderr 输出简洁诊断；unexpected
+    programming exception 保留 Python traceback，但 stack trace 不写入持久化产物。
+Typed config shape:
+schema_version: "1"
+seed: 7
+data_version: mock-v1
+run: {output_root: runs, run_id: null}
+agent: {max_perception_actions: 2}
+stop: {ranking_margin_threshold: 0.10, min_segment_value: 0.15}
+components:
+  user_memory: mock
+  initial_ranker: mock
+  item_feature_store: in_memory
+  segment_store: in_memory
+  state_builder: default
+  information_need: mock
+  segment_value: mock
+  perceiver: mock
+  evidence_updater: mock
+  observation_updater: mock
+  score_updater: mock
+  stop_policy: threshold
+  trace_writer: jsonl
+input: {fixture_path: tests/fixtures/mock/v1/scenario.json}
+Rationale:
+用一个很小、确定、可审计的父配置机制支持 Phase 1 Mock 和后续实验，同时通过
+typed validation、显式 constructor mapping 和共享 Python runner 防止配置系统、
+CLI 或 bootstrap 形成第二套 Agent 逻辑。Fixture 只加载一次，run directory 在任何
+Agent action 前固定，resolved config 保存实际 run ID，使 trace/result 的运行身份
+和复现实验输入一致。
+Alternatives considered:
+单个重复配置文件；Hydra/OmegaConf composition；多父配置；CLI key=value
+overrides；list merge；environment interpolation；class import strings；plugin
+discovery；配置相对 cwd；保存绝对路径；YAML 内嵌 fixture；大量 input flags；
+Controller 使用多个 run 参数；CLI 自己组装/持久化；覆盖已有 run directory；
+bootstrap failure 伪装成 Agent StopDecision。
+Affected docs/tests:
+todo/implementation_roadmap.md；docs/00_component_interfaces.md；
+docs/08_agent_controller.md；docs/00_trace_replay.md；
+docs/00_deterministic_mock_scenario.md；configs/README.md；P1-09 config/bootstrap/
+CLI/integration tests。
+Deferred follow-up:
+P1-09 固化 inheritance/merge/cycle/path/config validation、fixture one-load、run ID
+collision、exit code 和 Python/CLI equivalence tests；Phase 2 在真实 data/store
+配置进入前重新确认外部 dataset/artifact path policy；安装后的 console command、
+真实 secret 注入、多个 config groups 和动态 experiment overrides 留到确有需求时
+讨论。
+Confirmed by: User
+Date: 2026-08-01
+```
+
 ---
 
 ## 11. P1-09 — Test Matrix and Phase Acceptance
@@ -575,6 +1099,7 @@ Status: `Pending`
 
 需要确认并覆盖：
 
+- config inheritance/merge/cycle detection、strict validation 和 path rules
 - schema validation and serialization
 - deterministic reranking and tie-breaking
 - State build/rebuild
@@ -593,6 +1118,8 @@ Status: `Pending`
 - Evidence → Score Update
 - Score Update → State rebuild
 - Controller → Trace Writer
+- validated config/fixture → bootstrap → Controller
+- Python `run_from_config()` 与 CLI 使用同一运行路径
 
 ### End-to-End Tests
 
@@ -603,12 +1130,14 @@ Status: `Pending`
 - low-value stop
 - failure-path run
 - same seed/config deterministic replay
+- explicit run-ID collision without overwrite
+- CLI success/failure exit codes and output channels
 
 ### Phase 1 验收候选标准
 
 - 同一输入、配置和 seed 得到相同结果。
 - segment 不会被重复观察。
-- 每个 successful perception 恰好按确认规则更新 budget 和 step。
+- 每次 Perceiver attempt（成功或失败）恰好按确认规则更新 budget 和 step。
 - 未观察 item 保留有意义的 initial ranking prior。
 - 每一步都产生符合契约的 Recommendation State。
 - 每个退出路径都有结构化 stop reason。
