@@ -363,24 +363,35 @@ Actions 的 Ubuntu Python 3.10/3.12 与 Windows Python 3.12 完整矩阵也已�
 - 用户行为序列预处理
 - Item Feature schema 和 Store
 - Segment Metadata schema 和 Store
-- 可替换 Video Segmenter interface
-- Fixed-window segmentation baseline
-- Cheap Segment Proxy pipeline
+- 可替换 Segment Definition Provider interface
+- Manifest-driven file/range segment ingestion baseline
+- CPU-only structural Item Feature and Segment Proxy pipeline
+- Exact-release loader、release-scoped filesystem resolver 和 typed record loaders
+- Full-SHA256 identity keys 与 persistent item/segment indexes
+- 独立 strict preprocessing config、共享 Python API 和薄 CLI
+- Count-limit fail-fast、verified reuse 和 no-overwrite multi-root publication
+- Gitignored local preprocessing ExecutionReport
 - 特征和数据 provenance
 - 小规模 fixture dataset
 
 ### 交付物
 
 - 可重复生成的 processed data
-- 可按 item 查询的 Segment Store
-- 可排除已观察片段的查询接口
+- 可按 item 查询完整静态 catalog 的 persistent Segment Store
+- Recommendation State 可基于 ObservationState 确定性投影未观察片段
 - feature manifest 和版本信息
+- 同一 Agent run 共享一个 immutable LoadedRelease，不混用 processed snapshots
+- `preprocess_from_config()` 返回 exact release ref，供 persistent data plane 消费
 
 ### 验收标准
 
 - Online loop 不执行视频切分或批量特征提取
 - 同一 preprocessing config 产生可追踪的数据版本
 - Segment ID 在 preprocessing、perception、evidence 和 trace 中保持一致
+- Persistent Store 与 in-memory Store 使用相同的 coverage、ordering 和
+  missing-resource semantics
+- Store 构造时验证 release/index，查询热路径只做 immutable in-memory lookup
+- Python API/CLI 共用同一同步 lifecycle；失败不发布 partial release
 
 ### 本阶段保留为可替换策略
 

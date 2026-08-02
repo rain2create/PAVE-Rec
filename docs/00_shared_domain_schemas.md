@@ -113,6 +113,16 @@ class ResourceRef:
 响应或其他 artifacts。`store/key/version` 必须足以在一次可复现实验中解析到
 确定资源。
 
+公共 Schema 保持 `checksum: str | None`，以兼容 Phase 1 Mock refs 和未来
+non-filesystem Stores。P2-03 对 Phase 2 filesystem source/generated resources
+施加更严格的 `sha256:<64 lowercase hex>` required-checksum contract；这属于具体
+resolver/manifest validation，不改变 `ResourceRef` 的公共 shape。
+
+精确 `size_bytes` 不重复加入每个公共 ref：P2-03 通过
+`DataIdentity.source_artifacts` 和 `RootBundleManifest.artifacts` 中的 typed
+`ArtifactEntry` 保存 checksum/size inventory。P2-06 filesystem resolver 只解析该
+release inventory 声明的 refs；同一 root 下未声明的文件不是隐式合法资源。
+
 ---
 
 ## 4. User Memory
@@ -192,8 +202,14 @@ class SegmentProxyRef:
     metadata: JsonObject
 ```
 
-`end_ms` 必须大于 `start_ms`。Initial ranking 使用有显式 rank 的 candidate
-entries，不分别维护可能互相矛盾的 score map 和 ranking list。
+`end_ms` 必须大于 `start_ms`。P2-04 投影的 SegmentMeta 使用相对于
+`media_ref` 自身的 half-open `[start_ms, end_ms)`：独立 clip 使用其
+local `[0, duration_ms)`，原媒体 range 使用声明的起止时间。独立
+clip 的原视频 provenance 可以不存在；它不是 Phase 1 SegmentMeta 的必需
+字段。这是 Phase 2 的兼容投影规则，不改变 Phase 1 schema shape。
+
+Initial ranking 使用有显式 rank 的 candidate entries，不分别维护可能互相矛盾的
+score map 和 ranking list。
 
 ---
 

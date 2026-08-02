@@ -8,6 +8,7 @@ Current files:
 
 - `implementation_roadmap.md`: high-level phased delivery plan.
 - `phase_1_discussion.md`: ordered Phase 1 decision checklist.
+- `phase_2_discussion.md`: ordered Phase 2 data and Store decision checklist.
 
 When a later phase is about to begin, create a dedicated
 `phase_<n>_discussion.md` before implementing that phase. Do not create detailed

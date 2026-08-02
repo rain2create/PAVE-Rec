@@ -370,6 +370,7 @@ while True:
 
 - `todo/implementation_roadmap.md`
 - `todo/phase_1_discussion.md`
+- `todo/phase_2_discussion.md`
 
 `todo/` 中的内容用于逐项讨论，并不自动代表已经确认的研究或实现决策。
 
