@@ -1,0 +1,11 @@
+{
+  "attributes": {},
+  "duration_ms": 12000,
+  "item_id": "item_c",
+  "metadata": {},
+  "payload_refs": [],
+  "schema_version": "segment-proxy-v1",
+  "segment_count": 2,
+  "segment_id": "segment_2",
+  "sequence_index": 1
+}

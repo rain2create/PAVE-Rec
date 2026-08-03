@@ -1,0 +1,24 @@
+{
+  "behavior_events_ref": {
+    "checksum": "sha256:4e710b139726b858689a42c5ecadfd86c3793e8942277b5e84cfd5841a5c8d95",
+    "key": "behavior_events.jsonl",
+    "store": "source",
+    "version": "preprocessing-v1"
+  },
+  "items_ref": {
+    "checksum": "sha256:5e53a124d283d1559e0f64c7bec0a2591f2aa6746a375ab3efbc9273cb2a8f6f",
+    "key": "items.jsonl",
+    "store": "source",
+    "version": "preprocessing-v1"
+  },
+  "metadata": {},
+  "schema_version": "source-dataset-manifest-v1",
+  "segment_definitions_ref": {
+    "checksum": "sha256:67b3dbf712d6814622c0c3e6ce024a10a25e640b362d4eb2ac500b04d4de561a",
+    "key": "segment_definitions.jsonl",
+    "store": "source",
+    "version": "preprocessing-v1"
+  },
+  "source_dataset_id": "preprocessing-fixture",
+  "source_dataset_version": "preprocessing-v1"
+}

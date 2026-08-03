@@ -1,0 +1,6 @@
+{"interaction_index":0,"interaction_type":"view","item_id":"item_a","metadata":{},"occurred_at_ms":1000,"user_id":"user_timed","value":1.0}
+{"interaction_index":1,"interaction_type":"view","item_id":"item_a","metadata":{"repeat":true},"occurred_at_ms":1000,"user_id":"user_timed","value":1.0}
+{"interaction_index":2,"interaction_type":"like","item_id":"item_b","metadata":{},"occurred_at_ms":2000,"user_id":"user_timed","value":1.0}
+{"interaction_index":0,"interaction_type":"view","item_id":"item_c","metadata":{},"occurred_at_ms":null,"user_id":"user_without_time","value":null}
+{"interaction_index":1,"interaction_type":"view","item_id":"item_b","metadata":{},"occurred_at_ms":null,"user_id":"user_without_time","value":null}
+{"interaction_index":2,"interaction_type":"view","item_id":"item_a","metadata":{},"occurred_at_ms":null,"user_id":"user_without_time","value":null}

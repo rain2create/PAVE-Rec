@@ -1,0 +1,33 @@
+{
+  "data_version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97",
+  "entries": [
+    {
+      "feature_ref": {
+        "checksum": "sha256:f3a9df7d4f1890130a3e618fccc0c4ac965cff759193bd904b19342dc394c1f5",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/item-features/76/768066a492149672bef9bcd180803f322e5721065300dce66990fb8c322f5cbc.json",
+        "store": "features",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "item_id": "item_a"
+    },
+    {
+      "feature_ref": {
+        "checksum": "sha256:5f67cb8c504c073e56c85c94c4626926c016fdd10cf27de97f6063f840afe790",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/item-features/7e/7e18ed44e0d08e4979f06bd9c570e16f513aacc136ecaa66fb775d91e7364628.json",
+        "store": "features",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "item_id": "item_b"
+    },
+    {
+      "feature_ref": {
+        "checksum": "sha256:66fcca1d3cc511c76a2311db88fef98a4fdcc80fecc803a4e7f7bf7b735d73de",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/item-features/93/938860c61647bec5e55fb3c1176951456d9df28f87b2c500218511d327d3bc2c.json",
+        "store": "features",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "item_id": "item_c"
+    }
+  ],
+  "schema_version": "item-feature-store-index-v1"
+}

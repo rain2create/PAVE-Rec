@@ -1,0 +1,116 @@
+{
+  "artifacts": [
+    {
+      "artifact_kind": "item-feature",
+      "record_count": 1,
+      "resource_ref": {
+        "checksum": "sha256:f3a9df7d4f1890130a3e618fccc0c4ac965cff759193bd904b19342dc394c1f5",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/item-features/76/768066a492149672bef9bcd180803f322e5721065300dce66990fb8c322f5cbc.json",
+        "store": "features",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "schema_version": "item-feature-v1",
+      "size_bytes": 174
+    },
+    {
+      "artifact_kind": "item-feature",
+      "record_count": 1,
+      "resource_ref": {
+        "checksum": "sha256:5f67cb8c504c073e56c85c94c4626926c016fdd10cf27de97f6063f840afe790",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/item-features/7e/7e18ed44e0d08e4979f06bd9c570e16f513aacc136ecaa66fb775d91e7364628.json",
+        "store": "features",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "schema_version": "item-feature-v1",
+      "size_bytes": 177
+    },
+    {
+      "artifact_kind": "item-feature",
+      "record_count": 1,
+      "resource_ref": {
+        "checksum": "sha256:66fcca1d3cc511c76a2311db88fef98a4fdcc80fecc803a4e7f7bf7b735d73de",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/item-features/93/938860c61647bec5e55fb3c1176951456d9df28f87b2c500218511d327d3bc2c.json",
+        "store": "features",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "schema_version": "item-feature-v1",
+      "size_bytes": 147
+    },
+    {
+      "artifact_kind": "segment-proxy",
+      "record_count": 1,
+      "resource_ref": {
+        "checksum": "sha256:aae644892a55598320c3526fd9c973066d7e750fdc2281e347aafe15ac3914a3",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/segment-proxies/34/340ebbe79f5e41ce041d6cc04b65036deb4be59097ae1883642390b01c62843a.json",
+        "store": "features",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "schema_version": "segment-proxy-v1",
+      "size_bytes": 224
+    },
+    {
+      "artifact_kind": "segment-proxy",
+      "record_count": 1,
+      "resource_ref": {
+        "checksum": "sha256:e210d00ce91fc17a5b12a5311696ec125f2807fb6a2ab081825c532f44170c87",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/segment-proxies/62/627a1d335e47ba0f7cfe7118374fc0c8acb51cc8526073676c65370e2efeb094.json",
+        "store": "features",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "schema_version": "segment-proxy-v1",
+      "size_bytes": 224
+    },
+    {
+      "artifact_kind": "segment-proxy",
+      "record_count": 1,
+      "resource_ref": {
+        "checksum": "sha256:a3ad81a285a10871e6976300c3be12becae96fc83ed7fbabf8692b102cfe443d",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/segment-proxies/63/635360ea8d2fff8bff29de584cc715e1274b0801cb4e323f2e6601beb98d1731.json",
+        "store": "features",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "schema_version": "segment-proxy-v1",
+      "size_bytes": 224
+    },
+    {
+      "artifact_kind": "segment-proxy",
+      "record_count": 1,
+      "resource_ref": {
+        "checksum": "sha256:8fa21dc3c62648676cd756ea02d80b74aef55b9c80539508d4afab0538e1713c",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/segment-proxies/94/9408fc39334d772410cbea30aae5abae3796b0d92849798422c634378b127258.json",
+        "store": "features",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "schema_version": "segment-proxy-v1",
+      "size_bytes": 223
+    },
+    {
+      "artifact_kind": "segment-proxy",
+      "record_count": 1,
+      "resource_ref": {
+        "checksum": "sha256:f381948588a316f313c3023b81c4842032d8ce5f9ebac0969c1d1029fcbbfb81",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/segment-proxies/c6/c6b14295fd373106c5970deb65ae6b451a03e4eaf82e37910b5609899bd09726.json",
+        "store": "features",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "schema_version": "segment-proxy-v1",
+      "size_bytes": 224
+    },
+    {
+      "artifact_kind": "segment-proxy",
+      "record_count": 1,
+      "resource_ref": {
+        "checksum": "sha256:b135b76a6bece3ef739a9ed96d2554c1b179742f2ae0e623070b85e6b06f1c8d",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/segment-proxies/de/de3de7a0cd4762fbb02fc70b6a5caa26601a4c7a963be3164ecb3ca8fa79e1c0.json",
+        "store": "features",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "schema_version": "segment-proxy-v1",
+      "size_bytes": 224
+    }
+  ],
+  "data_version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97",
+  "identity_digest": "31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97",
+  "root_id": "features",
+  "schema_version": "root-bundle-manifest-v1"
+}

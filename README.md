@@ -200,8 +200,10 @@ runner 和 CLI contract 已由 `todo/phase_1_discussion.md` 的 P1-08 Decision
 Record 确认；测试矩阵、quality gates、CI 和 Phase 1 Definition of Done 已由
 P1-09 Decision Record 确认。Phase 1 已完成实现和验收；P1-XG-01 已统一 segment
 identity、descriptor、canonical serialization、failure lifecycle 和 temporary-project
-testing 语义。Phase 2 的 P2-00—P2-08 与 P2-XG-01 也已全部确认，当前可以开始
-offline data and persistent Store implementation，但 Phase 2 尚未标记为 Completed。
+testing 语义。Phase 2 的 P2-00—P2-08 与 P2-XG-01 也已全部确认，并据此实现
+offline data and persistent Store。Phase 2 baseline、portable golden、
+persistent Store Agent smoke 和本地 quality gates 已实现；在同一 candidate commit 的
+远端 CI matrix 通过并保存 completion evidence 前，Phase 2 仍不标记为 Completed。
 
 ---
 
@@ -423,7 +425,31 @@ python -m pytest -q --cov=pave_rec --cov-branch --cov-report=term-missing
 
 ---
 
-## 9. 当前明确保留为 TBD 的研究问题
+## 9. Phase 2 Offline Data Plane
+
+Phase 2 提供 offline、CPU-only、无媒体解码的结构化 preprocessing baseline：
+
+```bash
+python -m pave_rec.cli.preprocess --config configs/preprocessing/fixture.yaml
+```
+
+共享 Python API 返回 exact release handoff：
+
+```python
+from pave_rec.preprocessing import preprocess_from_config
+
+result = preprocess_from_config("configs/preprocessing/fixture.yaml")
+```
+
+`result.release_ref` 与同一 validated root registry 交给 `ReleaseLoader`，构造一个由
+filesystem resolver、Item Feature Store 和 Segment Store 共享的 immutable
+`LoadedRelease`。Runtime 不扫描 `latest`、不按 mtime 选择版本，也不在 online Agent
+loop 内执行切分或批量特征提取。Fixture invocation 只用于复现 Phase 2 contract；它不
+代表最终数据集、segmentation、proxy feature 或 embedding 研究方案。
+
+---
+
+## 10. 当前明确保留为 TBD 的研究问题
 
 下面这些内容暂时不应该被 Codex 写死：
 

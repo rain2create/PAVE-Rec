@@ -1,0 +1,20 @@
+extends: base.yaml
+
+source:
+  manifest_ref:
+    store: source
+    key: source_manifest.json
+    version: preprocessing-v1
+    checksum: sha256:9e3412091457b937c7672b3227127c40cc5b802a59ff6e4de541757618482418
+
+storage:
+  roots:
+    source:
+      path: tests/fixtures/preprocessing/v1/source
+      access: read_only
+    processed:
+      path: data/processed
+      access: write_new
+    features:
+      path: artifacts/features
+      access: write_new

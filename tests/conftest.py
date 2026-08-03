@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -68,3 +69,39 @@ def synthetic_project(tmp_path: Path, repo_root: Path) -> Path:
         root / "tests/fixtures/mock/v1/scenario.json",
     )
     return root
+
+
+@pytest.fixture
+def preprocessing_project_factory(tmp_path: Path, repo_root: Path) -> Callable[[str], Path]:
+    def create(name: str = "preprocessing-project") -> Path:
+        root = tmp_path / name
+        (root / "configs/preprocessing").mkdir(parents=True)
+        (root / "tests/fixtures/preprocessing/v1").mkdir(parents=True)
+        (root / "data/processed").mkdir(parents=True)
+        (root / "artifacts/features").mkdir(parents=True)
+        (root / "runs").mkdir(parents=True)
+        (root / "pyproject.toml").write_text(
+            '[project]\nname = "synthetic-pave-rec"\nversion = "0.0.0"\n',
+            encoding="utf-8",
+            newline="\n",
+        )
+        shutil.copyfile(
+            repo_root / "configs/preprocessing/base.yaml",
+            root / "configs/preprocessing/base.yaml",
+        )
+        shutil.copyfile(
+            repo_root / "configs/preprocessing/fixture.yaml",
+            root / "configs/preprocessing/fixture.yaml",
+        )
+        shutil.copytree(
+            repo_root / "tests/fixtures/preprocessing/v1/source",
+            root / "tests/fixtures/preprocessing/v1/source",
+        )
+        return root
+
+    return create
+
+
+@pytest.fixture
+def preprocessing_project(preprocessing_project_factory: Callable[[str], Path]) -> Path:
+    return preprocessing_project_factory("preprocessing-project")

@@ -21,6 +21,18 @@ class ConfigurationError(ContractError):
     """Configuration loading, merging, or validation failed before a run started."""
 
 
+class DatasetValidationError(ContractError):
+    """Phase 2 source or processed data violates its declared contract."""
+
+
+class ArtifactIntegrityError(PaveRecError):
+    """A published artifact graph or typed resource is internally inconsistent."""
+
+
+class ArtifactPublicationError(PaveRecError):
+    """An immutable artifact could not be staged, verified, or published safely."""
+
+
 class FixtureValidationError(ContractError):
     """A versioned fixture is missing or violates its declared contract."""
 

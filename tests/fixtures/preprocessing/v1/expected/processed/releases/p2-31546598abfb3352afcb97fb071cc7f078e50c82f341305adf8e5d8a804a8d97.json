@@ -1,0 +1,232 @@
+{
+  "data_version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97",
+  "identity": {
+    "component_descriptors": [
+      {
+        "implementation": "CanonicalBehaviorProcessor",
+        "role": "behavior_processor",
+        "version": "canonical-behavior-v1"
+      },
+      {
+        "implementation": "ManifestSegmentDefinitionProvider",
+        "role": "segment_definition_provider",
+        "version": "manifest-segments-v1"
+      },
+      {
+        "implementation": "StructuralItemFeatureExtractor",
+        "role": "item_feature_extractor",
+        "version": "structural-item-v1"
+      },
+      {
+        "implementation": "StructuralSegmentProxyExtractor",
+        "role": "segment_proxy_extractor",
+        "version": "structural-segment-proxy-v1"
+      }
+    ],
+    "identity_schema_version": "data-identity-v1",
+    "output_versions": {
+      "artifact_entry": "artifact-entry-v1",
+      "behavior_sequence": "user-behavior-sequence-v1",
+      "item_feature": "item-feature-v1",
+      "item_feature_index": "item-feature-store-index-v1",
+      "release_manifest": "release-manifest-v1",
+      "root_bundle_manifest": "root-bundle-manifest-v1",
+      "segment_proxy": "segment-proxy-v1",
+      "segment_store_index": "segment-store-index-v1"
+    },
+    "semantic_config": {
+      "codecs": {
+        "behavior_sequences": "canonical-jsonl-v1",
+        "compression": "none",
+        "feature_records": "canonical-json-v1",
+        "manifests_and_indexes": "canonical-json-v1",
+        "source_manifest": "canonical-json-v1",
+        "source_records": "canonical-jsonl-v1"
+      },
+      "components": {
+        "behavior_processor": "canonical",
+        "item_feature_extractor": "structural",
+        "segment_definition_provider": "manifest",
+        "segment_proxy_extractor": "structural"
+      },
+      "features": {
+        "item_attributes": [
+          {
+            "output_key": "category",
+            "required": false,
+            "source_key": "category",
+            "value_type": "string"
+          }
+        ],
+        "segment_attributes": []
+      },
+      "logical_roots": {
+        "features": "features",
+        "processed": "processed",
+        "source_manifest": "source"
+      }
+    },
+    "source_artifacts": [
+      {
+        "artifact_kind": "behavior-events",
+        "record_count": 6,
+        "resource_ref": {
+          "checksum": "sha256:4e710b139726b858689a42c5ecadfd86c3793e8942277b5e84cfd5841a5c8d95",
+          "key": "behavior_events.jsonl",
+          "store": "source",
+          "version": "preprocessing-v1"
+        },
+        "schema_version": "behavior-event-v1",
+        "size_bytes": 877
+      },
+      {
+        "artifact_kind": "source-items",
+        "record_count": 3,
+        "resource_ref": {
+          "checksum": "sha256:5e53a124d283d1559e0f64c7bec0a2591f2aa6746a375ab3efbc9273cb2a8f6f",
+          "key": "items.jsonl",
+          "store": "source",
+          "version": "preprocessing-v1"
+        },
+        "schema_version": "source-item-v1",
+        "size_bytes": 144
+      },
+      {
+        "artifact_kind": "media",
+        "record_count": null,
+        "resource_ref": {
+          "checksum": "sha256:960a7548bb41a0f614a8e02120508c0369b2f11f85a915c897c72b2a61efe8ec",
+          "key": "media/clip_a2.bin",
+          "store": "source",
+          "version": "media-fixture-v1"
+        },
+        "schema_version": "opaque-bytes-v1",
+        "size_bytes": 18
+      },
+      {
+        "artifact_kind": "media",
+        "record_count": null,
+        "resource_ref": {
+          "checksum": "sha256:82314f0ce12873c756ce324570e117bfce08c1e59260b5db99f9f9332d6ae0c4",
+          "key": "media/clip_b1.bin",
+          "store": "source",
+          "version": "media-fixture-v1"
+        },
+        "schema_version": "opaque-bytes-v1",
+        "size_bytes": 18
+      },
+      {
+        "artifact_kind": "media",
+        "record_count": null,
+        "resource_ref": {
+          "checksum": "sha256:711372209ca0a9ca6951a55b8a41be7061cd437b1455fd3c069a0500c4235ba3",
+          "key": "media/clip_c1.bin",
+          "store": "source",
+          "version": "media-fixture-v1"
+        },
+        "schema_version": "opaque-bytes-v1",
+        "size_bytes": 18
+      },
+      {
+        "artifact_kind": "media",
+        "record_count": null,
+        "resource_ref": {
+          "checksum": "sha256:18c5a695cae647ee5fcb2044c5022f292ae85573eaf398f9488df317c1e106ce",
+          "key": "media/clip_c2.bin",
+          "store": "source",
+          "version": "media-fixture-v1"
+        },
+        "schema_version": "opaque-bytes-v1",
+        "size_bytes": 18
+      },
+      {
+        "artifact_kind": "media",
+        "record_count": null,
+        "resource_ref": {
+          "checksum": "sha256:b63af7f26bc5fa68c04df3735fb3af69952d69e43dedbb37d230e9c05ad3b697",
+          "key": "media/source_a.bin",
+          "store": "source",
+          "version": "media-fixture-v1"
+        },
+        "schema_version": "opaque-bytes-v1",
+        "size_bytes": 19
+      },
+      {
+        "artifact_kind": "media",
+        "record_count": null,
+        "resource_ref": {
+          "checksum": "sha256:a9e32e1e0f771e18d6742add623bb2e9070c1c06ee47e52fb1abd5896511f2ca",
+          "key": "media/source_b.bin",
+          "store": "source",
+          "version": "media-fixture-v1"
+        },
+        "schema_version": "opaque-bytes-v1",
+        "size_bytes": 19
+      },
+      {
+        "artifact_kind": "media",
+        "record_count": null,
+        "resource_ref": {
+          "checksum": "sha256:ab9ec1490ed51e5a632ad5a0a614be2ccec8a7c6965deb859f6004c03307250f",
+          "key": "media/source_c.bin",
+          "store": "source",
+          "version": "media-fixture-v1"
+        },
+        "schema_version": "opaque-bytes-v1",
+        "size_bytes": 19
+      },
+      {
+        "artifact_kind": "segment-definitions",
+        "record_count": 6,
+        "resource_ref": {
+          "checksum": "sha256:67b3dbf712d6814622c0c3e6ce024a10a25e640b362d4eb2ac500b04d4de561a",
+          "key": "segment_definitions.jsonl",
+          "store": "source",
+          "version": "preprocessing-v1"
+        },
+        "schema_version": "segment-definition-v1",
+        "size_bytes": 2271
+      }
+    ],
+    "source_manifest": {
+      "behavior_events_ref": {
+        "checksum": "sha256:4e710b139726b858689a42c5ecadfd86c3793e8942277b5e84cfd5841a5c8d95",
+        "key": "behavior_events.jsonl",
+        "store": "source",
+        "version": "preprocessing-v1"
+      },
+      "items_ref": {
+        "checksum": "sha256:5e53a124d283d1559e0f64c7bec0a2591f2aa6746a375ab3efbc9273cb2a8f6f",
+        "key": "items.jsonl",
+        "store": "source",
+        "version": "preprocessing-v1"
+      },
+      "metadata": {},
+      "schema_version": "source-dataset-manifest-v1",
+      "segment_definitions_ref": {
+        "checksum": "sha256:67b3dbf712d6814622c0c3e6ce024a10a25e640b362d4eb2ac500b04d4de561a",
+        "key": "segment_definitions.jsonl",
+        "store": "source",
+        "version": "preprocessing-v1"
+      },
+      "source_dataset_id": "preprocessing-fixture",
+      "source_dataset_version": "preprocessing-v1"
+    }
+  },
+  "root_bundle_manifest_refs": [
+    {
+      "checksum": "sha256:a8050111c0c00008fb2c4d57e359e52bc93ea7e99c65080d4a04ad04495211fb",
+      "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/root_bundle_manifest.json",
+      "store": "features",
+      "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+    },
+    {
+      "checksum": "sha256:1f5bad3c74f08510fae30554c89ff0072b108c6c5036618d2588bb258eb5110e",
+      "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/root_bundle_manifest.json",
+      "store": "processed",
+      "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+    }
+  ],
+  "schema_version": "release-manifest-v1",
+  "status": "complete"
+}

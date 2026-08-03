@@ -1,0 +1,33 @@
+schema_version: "1"
+
+output:
+  processed_root_id: processed
+  features_root_id: features
+
+codecs:
+  source_manifest: canonical-json-v1
+  source_records: canonical-jsonl-v1
+  behavior_sequences: canonical-jsonl-v1
+  feature_records: canonical-json-v1
+  manifests_and_indexes: canonical-json-v1
+  compression: none
+
+features:
+  item_attributes:
+    - source_key: category
+      output_key: category
+      value_type: string
+      required: false
+  segment_attributes: []
+
+components:
+  behavior_processor: canonical
+  segment_definition_provider: manifest
+  item_feature_extractor: structural
+  segment_proxy_extractor: structural
+
+limits:
+  max_items: 100
+  max_behavior_events: 1000
+  max_total_segments: 1000
+  max_segments_per_item: 100

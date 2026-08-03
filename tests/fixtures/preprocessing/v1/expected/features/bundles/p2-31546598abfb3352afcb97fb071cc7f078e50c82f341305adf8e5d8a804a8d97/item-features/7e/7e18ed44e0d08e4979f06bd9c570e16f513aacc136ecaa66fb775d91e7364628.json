@@ -1,0 +1,10 @@
+{
+  "attributes": {
+    "category": "thriller"
+  },
+  "item_id": "item_b",
+  "metadata": {},
+  "payload_refs": [],
+  "schema_version": "item-feature-v1",
+  "segment_count": 2
+}

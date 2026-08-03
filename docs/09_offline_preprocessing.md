@@ -808,10 +808,14 @@ GPU、MLLM、FFmpeg、真实 dataset 或未声明 system tool。Cross-platform p
 
 Phase 2 quality gate 是 pytest 全部通过、整个 `pave_rec` package branch coverage 至少
 90%、Ruff lint/format，以及 project-wide GitHub Actions 在 Ubuntu Python 3.10/3.12 和
-Windows Python 3.12 全部通过。P2-08 Confirmed 只关闭 acceptance design；只有
-P2-XG-01 已确认，但仍只有 implementation、stable-doc consistency、local quality gates
-和同一 candidate commit 的完整远端 CI matrix 都通过后，路线图才能标记 Phase 2
-`Completed`。
+Windows Python 3.12 全部通过。当前 baseline、golden、API/CLI E2E、publication race、
+persistent data plane Agent smoke 和本地 quality gates 已实现并通过；同一 candidate
+commit 的完整远端 CI matrix 尚未形成 completion evidence，因此路线图仍不能把
+Phase 2 标记为 `Completed`。
+
+2026-08-03 的本地 acceptance evidence 为 macOS / Python 3.13：`168 passed`，整个
+`pave_rec` package branch coverage `91.62%`，Ruff lint/format passed。该记录只证明
+local gates，不替代已确认的 Ubuntu Python 3.10/3.12 与 Windows Python 3.12 CI matrix。
 
 ---
 

@@ -1,0 +1,44 @@
+{
+  "artifacts": [
+    {
+      "artifact_kind": "behavior-sequences",
+      "record_count": 2,
+      "resource_ref": {
+        "checksum": "sha256:e2c5acb3c954c20db0b763ec72c657123b2abdb6ffc31dfc95cece5c49d21eed",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/behavior/user_sequences.jsonl",
+        "store": "processed",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "schema_version": "user-behavior-sequence-v1",
+      "size_bytes": 837
+    },
+    {
+      "artifact_kind": "item-feature-store-index",
+      "record_count": 3,
+      "resource_ref": {
+        "checksum": "sha256:117965a6236b2547255ee725ca43a96c9a94f20447aee2a1f749efe0c97fd006",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/indexes/item_features.json",
+        "store": "processed",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "schema_version": "item-feature-store-index-v1",
+      "size_bytes": 1557
+    },
+    {
+      "artifact_kind": "segment-store-index",
+      "record_count": 3,
+      "resource_ref": {
+        "checksum": "sha256:c59b2d714ce92628d2bc8bdc6a19c7ab0301d58739b62d7b5125d48f28eaebed",
+        "key": "bundles/p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97/indexes/segments.json",
+        "store": "processed",
+        "version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97"
+      },
+      "schema_version": "segment-store-index-v1",
+      "size_bytes": 6370
+    }
+  ],
+  "data_version": "p2-31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97",
+  "identity_digest": "31546598abfb3352afcb97fb071cc7f078e50c82f341305adf8e5d8a804a8d97",
+  "root_id": "processed",
+  "schema_version": "root-bundle-manifest-v1"
+}

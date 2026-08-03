@@ -1,0 +1,10 @@
+{
+  "attributes": {
+    "category": "drama"
+  },
+  "item_id": "item_a",
+  "metadata": {},
+  "payload_refs": [],
+  "schema_version": "item-feature-v1",
+  "segment_count": 2
+}
