@@ -202,8 +202,8 @@ P1-09 Decision Record 确认。Phase 1 已完成实现和验收；P1-XG-01 已�
 identity、descriptor、canonical serialization、failure lifecycle 和 temporary-project
 testing 语义。Phase 2 的 P2-00—P2-08 与 P2-XG-01 也已全部确认，并据此实现
 offline data and persistent Store。Phase 2 baseline、portable golden、
-persistent Store Agent smoke 和本地 quality gates 已实现；在同一 candidate commit 的
-远端 CI matrix 通过并保存 completion evidence 前，Phase 2 仍不标记为 Completed。
+persistent Store Agent smoke、本地 quality gates 和远端 Ubuntu/Windows CI matrix
+已全部通过；Phase 2 Definition of Done 已满足，状态正式记为 `Completed`。
 
 ---
 

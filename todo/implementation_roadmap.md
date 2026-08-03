@@ -419,7 +419,7 @@ Actions 的 Ubuntu Python 3.10/3.12 与 Windows Python 3.12 完整矩阵也已�
   Ruff lint/format，以及 project-wide GitHub Actions 的 Ubuntu Python 3.10/3.12 和
   Windows Python 3.12 全部通过
 
-### 当前实现与验收状态 — `Local gates passed; remote CI pending`
+### 当前实现与验收状态 — `Completed`
 
 P2-00—P2-08 与 P2-XG-01 已全部 Confirmed。Offline preprocessing baseline、typed
 source/processed records、deterministic identity、multi-root publication、exact release
@@ -427,12 +427,12 @@ loader、resolver、persistent Stores、versioned fixture/golden、API/CLI equiv
 two-invocation race 和 persistent-Store Agent smoke 已实现。本地 pytest、package branch
 coverage >= 90% 与 Ruff lint/format gates 已通过，Phase 1 regression/golden/replay 未回退。
 
-Local acceptance evidence（尚非 completion record）：2026-08-03，macOS / Python 3.13，
+Local acceptance evidence：2026-08-03，macOS / Python 3.13，
 `168 passed`，package branch coverage `91.62%`，Ruff lint/format passed。
 
-Phase 2 仍不标记为 `Completed`：必须先形成一个 candidate commit，并让 project-wide
-GitHub Actions 的 Ubuntu Python 3.10/3.12 与 Windows Python 3.12 matrix 在同一 commit
-全部通过，再在这里保存 commit、日期和 CI evidence。
+Completion evidence：2026-08-03，candidate commit `af9b16f` 的 project-wide GitHub
+Actions run `30796812135` 在 Ubuntu Python 3.10、Ubuntu Python 3.12 和 Windows
+Python 3.12 全部通过。Phase 2 Definition of Done 已满足，状态正式记为 `Completed`。
 
 ### 本阶段保留为可替换策略
 
