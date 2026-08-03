@@ -43,7 +43,7 @@ def test_cli_success_output(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Capt
         "outcome=created",
         f"data_version=p2-{'a' * 64}",
         f"release_ref=processed:releases/p2-{'a' * 64}.json@p2-{'a' * 64}#sha256:{'b' * 64}",
-        "execution_report=runs/preprocessing/report.json",
+        f"execution_report={Path('runs/preprocessing/report.json')}",
     ]
 
 
