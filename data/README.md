@@ -25,5 +25,7 @@ Staging and orphan bundles remain undiscoverable until a valid release exists.
 
 Runtime pins a complete release by its full data version and checksum, loads its
 indexes once, and never infers a current version from directory contents or mtime.
-One Agent run uses one processed release for both item features and segment
-catalogs; separate runs may intentionally pin different releases.
+The portable release ref is resolved through a trusted validated root registry; it
+does not contain a machine path. One Agent run uses one processed release for both
+item features and segment catalogs; separate runs may intentionally pin different
+releases.

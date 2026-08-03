@@ -63,7 +63,11 @@ P2-07 uses a separate strict/frozen `Phase2PreprocessingConfig` loaded by
 `load_preprocessing_config()`. Files live under `configs/preprocessing/` and use the
 same deterministic single-parent `extends` semantics as Phase 1, but Phase 1's
 models and loader are not widened. A machine-local child config may override root
-paths only when that file is explicitly gitignored.
+paths when that file is explicitly gitignored. This is a repository/operational
+policy, not a runtime Git check: the loader must also work in non-Git synthetic
+projects. Runtime still requires the whole config chain to remain inside the project
+root and validates the complete root graph. Committed fixture configs use only
+portable project-relative roots.
 
 The top-level fields are fixed as:
 
@@ -109,10 +113,14 @@ logical root/key, full `p2-<64hex>` version, and SHA-256 checksum. They do not s
 and filesystem resolver share one immutable loaded release, preventing a single
 Agent run from combining processed artifacts from two releases.
 
+The exact release ref is the portable identity handoff, not a self-contained physical
+locator. `ReleaseLoader` must also receive the trusted validated root registry derived
+from config; absolute root paths never move into ResourceRef or portable manifests.
+
 `preprocess_from_config()` returns the exact release ref needed by P2-06 together
 with the data version and local execution report path. P2-08 uses that handoff
-programmatically for the persistent-Store Agent smoke test. Phase 1 config and
-`run_from_config()` remain unchanged; a real runtime experiment-config selector is
-deferred until a later phase actually consumes real Stores. A raw media ref may
-keep its upstream version—the no-mixing rule applies to the processed release
-snapshot, not every resource-version string.
+with the same validated root registry for the persistent-Store Agent smoke test.
+Phase 1 config and `run_from_config()` remain unchanged; a real runtime
+experiment-config selector is deferred until a later phase actually consumes real
+Stores. A raw media ref may keep its upstream version—the no-mixing rule applies to
+the processed release snapshot, not every resource-version string.

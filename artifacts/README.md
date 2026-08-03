@@ -45,4 +45,5 @@ A filesystem resolver verifies release membership, safe root/key containment,
 declared byte size, and full checksum when a payload is actually resolved. Typed
 record loaders validate schema and item/segment identity separately. There is no
 `latest` discovery, unverified streaming, overwrite, or cross-release Store mixing
-in the Phase 2 baseline.
+in the Phase 2 baseline. The resolver receives physical root bindings only from a
+trusted validated config registry; portable refs and manifests never embed them.

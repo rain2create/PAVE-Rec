@@ -399,15 +399,29 @@ Writer 每条 JSONL record 写入后 flush。任何 write failure 都抛
 ```text
 PaveRecError
 ├── ContractError
+│   ├── ConfigurationError
+│   └── DatasetValidationError
 ├── ResourceResolutionError
-└── ComponentExecutionError
+├── ComponentExecutionError
+├── ArtifactIntegrityError
+└── ArtifactPublicationError
 ```
 
 - `ContractError`：Schema/invariant/coverage 违规，例如重复 candidate、Value
   output 缺项或 item/segment identity 不一致。
 - `ResourceResolutionError`：必需 reference 无法解析、checksum/version 不匹配。
 - `ComponentExecutionError`：组件发生未被正常 result contract 表达的执行错误。
+- `DatasetValidationError`：Phase 2 source/processed schema、coverage、ordering 或 count
+  contract 失败；它属于 `ContractError`。
+- `ArtifactIntegrityError`：已发布 manifest/index/resource graph 或 typed identity
+  不一致。
+- `ArtifactPublicationError`：Phase 2 staging、verification、rename、final publish 或
+  terminal report lifecycle 失败。
 - 可预期 Perception failure 返回 `PerceptionResult(status=failed)`，不是异常。
+
+后三个 Phase 2 additions 都是 declared `PaveRecError`。Preprocessing CLI 的 exit-code
+mapping 见 `09_offline_preprocessing.md`；它们不改变 Phase 1 Controller 的 stop/failure
+semantics。
 
 异常不能被静默吞掉，也不能自动转换为空 Evidence、空 scores 或伪成功。
 P1-05 已确认 declared exception 终止当前 run；正常

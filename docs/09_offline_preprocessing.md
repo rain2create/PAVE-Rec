@@ -232,7 +232,14 @@ RangeLocator -> SegmentMeta(media_ref=source_ref, start_ms=start_ms, end_ms=end_
 因此原视频起止时间不是必填信息；独立 clip 的 `[0, duration_ms)` 只是
 相对它自己的访问范围。P1 `SegmentMeta`、`ItemSegmentCatalog`、Store、
 Controller 和 trace/replay contracts 不变。`sequence_index` 和可选 origin 保留在
-Phase 2 `ItemSegmentIndex`。
+canonical source `SegmentDefinition`，并由 preprocessing 内部 frozen、per-item
+`ItemSegmentIndex` 组织。
+
+`ItemSegmentIndex` 是 structural extractors、coverage validation 和 P1 projection 共用的
+非持久化 typed intermediate，不单独发布或加入 generated golden tree。Canonical
+SegmentDefinition source artifact 持久化 locator/origin provenance，SegmentProxyRecord
+持久化 sequence/count，SegmentStoreIndex 持久化 runtime-compatible projection，避免创建
+第三个 segment 事实来源。
 
 ---
 
@@ -313,7 +320,7 @@ DataIdentity
   content-producing ComponentDescriptors in fixed role order
   output schema and codec versions
 
-identity_digest = sha256(canonical_json(DataIdentity)).hexdigest()
+identity_digest = sha256(canonical_json_bytes(DataIdentity, pretty=False)).hexdigest()
 data_version = "p2-" + identity_digest
 ```
 
@@ -328,6 +335,12 @@ component-version contract failure。
 definitions 以及所有非 null locator media/origin refs。它记录每个 source ref 的
 artifact/schema kind、checksum、`size_bytes` 和可选 `record_count`，按
 `(store, key, version, checksum)` canonical ordering，并在计算 identity 前完整验证。
+
+Config 的 exact `source.manifest_ref.checksum` 在 ingestion 时验证，但 identity 保存
+canonical validated manifest object，而不是它的非语义 JSON 排版 bytes。只改变缩进、
+空白或 object-key 顺序且 canonical content/referenced resources 不变时，data version
+不变；canonical manifest fields 或任一 referenced artifact bytes/checksum 变化时版本
+必须改变。
 
 Phase 2 filesystem source/generated resources 必须使用
 `sha256:<64 lowercase hex>` checksum，并记录 `size_bytes`；record artifacts 可以
@@ -356,7 +369,7 @@ ReleaseManifest
   schema_version
   data_version
   identity
-  root_bundle_manifest_refs
+  root_bundle_manifest_refs sorted by (store, key)
   status: complete
 ```
 
@@ -371,6 +384,8 @@ root 中未被这个 graph 声明的文件不因“路径存在”而自动获�
 Timestamp、Git commit/dirty、configured/resolved roots、Python/platform 和
 `created`/`reused` outcome 写入单独 typed local `ExecutionReport`。它不进入
 data-version hash、portable bundle 或 golden artifacts，默认 gitignored。
+Portable record/manifest metadata 只能包含 deterministic semantic provenance；execution
+ID、timestamp、absolute/config/staging paths 和其他 invocation-local values 禁止进入。
 
 ### 7.2 Multi-root publication and reuse
 
@@ -450,7 +465,7 @@ P2-06 的 runtime 从一个 exact `ReleaseManifest` ref 构造：ref 必须包�
 不支持 `latest`、mtime/directory discovery 或 orphan-bundle discovery。
 
 ```text
-ReleaseLoader.load(exact_release_ref)
+ReleaseLoader(trusted_validated_root_registry).load(exact_release_ref)
   -> immutable LoadedRelease
        |-- FilesystemItemFeatureStore
        |-- FilesystemSegmentStore
@@ -463,12 +478,18 @@ ordering 全部通过后才返回。两个 Stores 与 resolver 共享同一个 L
 Agent run 不得分别选择 item release A 和 segment release B。不同 runs 可以固定不同
 release，file/range locator 也仍可在一个 release 内混合。
 
+Exact release ref 是唯一 portable release identity handoff，但不是自包含的 physical
+locator；root ID 到本机 path 的映射只能来自 trusted config。Preprocessing source
+ingestion 在 release 尚未存在时使用 validated root registry 和同一 path-safety core；
+runtime filesystem resolver 除路径/checksum 校验外还必须强制 LoadedRelease inventory
+membership。两个 resolver boundary 不能通过默认 bypass 混用。
+
 ### 9.1 Keys and indexes
 
 ```text
-item_hash = sha256(canonical_json({"item_id": item_id})).hexdigest()
+item_hash = sha256(canonical_json_bytes({"item_id": item_id}, pretty=False)).hexdigest()
 segment_hash = sha256(
-  canonical_json({"item_id": item_id, "segment_id": segment_id})
+  canonical_json_bytes({"item_id": item_id, "segment_id": segment_id}, pretty=False)
 ).hexdigest()
 
 features root:
@@ -512,6 +533,22 @@ JSON、typed schema 和 expected item/segment identity。Unknown query item 保�
 `ResourceResolutionError`；complete release 的 manifest/index/typed identity 不一致使用
 `ArtifactIntegrityError`。Corruption 不得降级为 optional feature、空 catalog 或 skip。
 
+Phase 2 declared errors 统一属于 `PaveRecError` hierarchy：
+
+```text
+PaveRecError
+├── ContractError
+│   ├── ConfigurationError
+│   └── DatasetValidationError
+├── ResourceResolutionError
+├── ComponentExecutionError
+├── ArtifactIntegrityError
+└── ArtifactPublicationError
+```
+
+Dataset/schema/coverage/count 失败属于 contract validation；已发布 graph/typed identity
+损坏属于 artifact integrity；staging/publish/report I/O lifecycle 失败属于 publication。
+
 `ComponentDescriptor.version` 表示 Store implementation semantics；run `data_version`
 表示固定的 processed release；`ResourceRef.version` 表示该资源自己的版本。生成的
 feature/proxy/index 通常使用当前 data version，raw media 可以保留 upstream version。
@@ -527,6 +564,11 @@ P2-07 使用独立 `Phase2PreprocessingConfig` 和
 Preprocessing YAML 放在 `configs/preprocessing/`，继续使用 single-parent relative
 `extends`、deterministic recursive mapping merge 和 strict/frozen extra-forbid
 validation。CLI/env 不提供 root、component 或 feature overrides。
+
+包含 machine absolute roots 的 local child config 应被 gitignored，但这是 repository
+operational policy，不是 runtime Git check。Loader 不依赖 Git repository；它仍要求整个
+config chain 留在 project root，并完整验证 root declarations、存在性、access、uniqueness
+和 non-overlap。可提交 fixture config 只使用 project-relative roots。
 
 ### 10.1 Typed config
 
@@ -645,8 +687,13 @@ PreprocessingResult
 ```
 
 只有完整 publish 或 verified reuse 才返回 result；declared failure 抛 typed exception，
-不返回 partial/`succeeded=False` result。Exact `release_ref` 可直接传给 P2-06 loader，
-且 ref version 等于 result data version。Local `Path` 不进入 portable serialization。
+不返回 partial/`succeeded=False` result。Exact `release_ref` 可直接作为 identity argument
+传给已绑定 validated root registry 的 P2-06 loader，且 ref version 等于 result data
+version。Local `Path` 不进入 portable serialization。
+
+`artifact_count` 等于所有 RootBundleManifest 中 generated artifact entries 的总数；包含
+behavior、feature/proxy 和 Store-index artifacts，不包含 source_artifacts、root manifests
+自身或 final ReleaseManifest。相同 release 的 created/reused result 必须返回相同 count。
 
 ### 10.3 Execution and publication
 
@@ -709,15 +756,68 @@ exact release ref 和 report path。Exit codes 为：
 
 Unexpected programming exceptions 保留 traceback，但不写入 artifacts/report。
 P2-07 不修改 Phase 1 config、`run_from_config()`、Mock bootstrap、goldens、Controller、
-State、Trace 或 Agent Loop。P2-08 通过 `PreprocessingResult.release_ref`
-programmatically 构造 persistent data plane 并执行 Agent smoke test；真实 runtime config
-selector 留给开始消费真实 Store 的后续阶段。
+State、Trace 或 Agent Loop。P2-08 通过同一 validated root registry 和
+`PreprocessingResult.release_ref` programmatically 构造 persistent data plane 并执行
+Agent smoke test；真实 runtime config selector 留给开始消费真实 Store 的后续阶段。
 
 ---
 
-## 11. TBD
+## 11. Testing and Phase Acceptance
+
+P2-08 固定使用 versioned `preprocessing-v1` fixture 验证本模块。Canonical fixture
+包含 2 users、`item_a/item_b/item_c`、6 behavior events，并为每个 item 固定
+`segment_1/segment_2`；
+它同时覆盖一位用户的完整 timestamps、另一位用户的全 null timestamps、合法重复
+interaction、range locator、独立 file locator 和带 origin 的 file locator。Media fixture
+只是带稳定 checksum 的小型 opaque bytes；baseline tests 不解码媒体。
+
+Version-controlled golden 覆盖 behavior sequences、item/segment records、indexes、root
+bundle manifests 和 release manifest 的完整 relative tree，并使用 canonical codec 做
+byte-exact comparison。Execution ID、timestamps、absolute roots、config/report/staging
+paths、Git/platform metadata 和 created/reused outcome 是 local operational values，只做
+typed semantic validation，不进入 golden。
+
+Python API 与 CLI 在独立 fresh synthetic projects 中必须得到相同的 data version、exact
+release ref、counts 和 portable artifact bytes。它们的 stdout、ExecutionReport 和
+machine-local result fields 不要求逐字节相同。
+
+Acceptance tests 必须证明：
+
+- physical roots、execution metadata 和不触发拒绝的 count-limit changes 不改变
+  DataIdentity 或 portable bytes；
+- canonical source-manifest fields、referenced source artifact bytes/checksum、attribute
+  mappings、content-producing component versions、schema/codec 和 logical recipe changes
+  会改变 data version；仅 source-manifest JSON 排版变化不会；
+- config/root/source/count/component/publication/report failures 不发布伪完整 release；
+- partial staging 不可发现，orphan/reuse/mismatch/corruption 遵守 P2-03/P2-07；
+- resolver 和 typed loaders 在已确认的 eager/lazy boundary 拒绝 membership、size、
+  checksum、version 和 identity corruption；
+- deterministic publisher collision tests 在所有 CI platforms 运行，Ubuntu Python 3.12
+  另执行 barrier-controlled two-invocation race；
+- exact release 通过 validated root registry 只加载一次，resolver 与两个 filesystem
+  Stores 共享同一 `LoadedRelease`；这两个 Stores 替换 in-memory Stores 后仍完成
+  `mock-v1` canonical two-action Agent run，并保持 preprocessing-to-trace segment identity；
+  smoke run 使用 Phase 2 data version/filesystem Store descriptors，其余 Mock descriptors、
+  Controller semantics 和 action budget 不变；
+- Phase 1 golden、replay 和全部 regression tests 不改变。
+
+所有 integration/E2E tests 只在 pytest `tmp_path` 下建立 synthetic project 和 distinct
+source/processed/features/runs roots，不接触仓库真实 data/artifacts/runs，也不使用网络、
+GPU、MLLM、FFmpeg、真实 dataset 或未声明 system tool。Cross-platform path grammar
+使用 pure tests；real symlink/junction capability-based，Ubuntu symlink coverage mandatory。
+
+Phase 2 quality gate 是 pytest 全部通过、整个 `pave_rec` package branch coverage 至少
+90%、Ruff lint/format，以及 project-wide GitHub Actions 在 Ubuntu Python 3.10/3.12 和
+Windows Python 3.12 全部通过。P2-08 Confirmed 只关闭 acceptance design；只有
+P2-XG-01 已确认，但仍只有 implementation、stable-doc consistency、local quality gates
+和同一 candidate commit 的完整远端 CI matrix 都通过后，路线图才能标记 Phase 2
+`Completed`。
+
+---
+
+## 12. TBD
 
 - final segmentation strategy
 - exact proxy feature set
 - exact embedding models
-- whether ASR/audio is included in the first Phase 2 baseline
+- future ASR/audio integration after the structural no-audio baseline

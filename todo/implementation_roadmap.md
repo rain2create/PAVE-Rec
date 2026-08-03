@@ -393,11 +393,44 @@ Actions 的 Ubuntu Python 3.10/3.12 与 Windows Python 3.12 完整矩阵也已�
 - Store 构造时验证 release/index，查询热路径只做 immutable in-memory lookup
 - Python API/CLI 共用同一同步 lifecycle；失败不发布 partial release
 
+### 自动化验收 — P2-08 Confirmed
+
+- Canonical `preprocessing-v1` 使用 2 users、3 items、6 behavior events 和 6
+  segments，覆盖 timestamp/all-null sequences、valid repeated interaction、file/range
+  locators 与 nullable/present origin；媒体只使用 checksummed opaque fixture bytes
+- Source fixture/config 和完整 portable output tree 纳入版本控制；behavior sequences、
+  feature/proxy records、indexes、root manifests 和 release manifest 做 byte-exact golden
+  comparison，ExecutionReport 和机器相关字段只做 semantic validation
+- API 与 CLI 在独立 fresh synthetic projects 中必须产生相同 data version、exact release
+  ref、counts 和 portable bytes，不要求 execution ID、timestamps、paths、outcome、report
+  或 stdout byte-equivalent
+- Identity tests 必须证明 physical roots/execution metadata/non-binding limits 不改变
+  version/bytes，source/mapping/component/schema/codec/logical recipe changes 会改变 version
+- Failure matrix 覆盖 config/root/source/count/component、staging/write/verify/rename/final
+  publish、existing corruption/collision 和 report failure；partial output 不可伪装 complete
+- 所有 platforms 通过 deterministic fault injection 验证 publisher collision；Ubuntu
+  Python 3.12 另执行 barrier-controlled real two-invocation race
+- 从 validated root registry 和 `PreprocessingResult.release_ref` 加载一个共享
+  `LoadedRelease`，只替换 Phase 1 in-memory Stores 后完成原 canonical two-action Agent
+  smoke，并验证 segment identity
+- 所有 integration/E2E 只写 pytest `tmp_path`，offline、CPU-only、无网络/GPU/真实
+  MLLM/FFmpeg/dataset；Phase 1 tests、goldens 和 replay 全部回归
+- Quality gate 固定为 pytest 全部通过、整个 `pave_rec` branch coverage 至少 90%、
+  Ruff lint/format，以及 project-wide GitHub Actions 的 Ubuntu Python 3.10/3.12 和
+  Windows Python 3.12 全部通过
+
+### 当前设计状态
+
+P2-00—P2-08 与 P2-XG-01 已全部 Confirmed，Phase 2 design gates 已关闭，可以开始
+implementation。P2-XG-01 只确认跨 Gate 一致性，不表示 Phase 2 已实现或 Completed；
+路线图只有在实现、稳定文档、全部本地质量门和同一 candidate commit 的远端 CI matrix
+都通过后才更新为 `Completed`。
+
 ### 本阶段保留为可替换策略
 
 - 最终 segmentation strategy
 - 最终 proxy feature set
-- ASR/audio 是否进入 Phase 2 第一条 baseline
+- structural no-audio baseline 之后的 ASR/audio 扩展方式
 - 最终 embedding model
 
 ---

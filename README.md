@@ -136,7 +136,8 @@ PAVE-Rec/
 ├── todo/
 │   ├── README.md
 │   ├── implementation_roadmap.md
-│   └── phase_1_discussion.md
+│   ├── phase_1_discussion.md
+│   └── phase_2_discussion.md
 │
 ├── configs/
 │   ├── base.yaml
@@ -188,8 +189,8 @@ PAVE-Rec/
 implementations；`agent/` 负责编排；`cli/` 只提供可复现实验入口。
 
 `data/`、`artifacts/` 和 `runs/` 中的本地内容默认不进入 Git。具体阶段和
-验收标准见 `todo/implementation_roadmap.md`；当前待确认事项见
-`todo/phase_1_discussion.md`。
+验收标准见 `todo/implementation_roadmap.md`；已确认的 Phase 1/2 Decision Records
+分别见 `todo/phase_1_discussion.md` 和 `todo/phase_2_discussion.md`。
 
 Phase 1 的公共 Schema、组件接口和确定性测试剧本分别以
 `docs/00_shared_domain_schemas.md`、`docs/00_component_interfaces.md` 和
@@ -197,10 +198,10 @@ Phase 1 的公共 Schema、组件接口和确定性测试剧本分别以
 `docs/00_trace_replay.md` 为准。配置继承、Bootstrap、`AgentRunRequest`、共享
 runner 和 CLI contract 已由 `todo/phase_1_discussion.md` 的 P1-08 Decision
 Record 确认；测试矩阵、quality gates、CI 和 Phase 1 Definition of Done 已由
-P1-09 Decision Record 确认。P1-01—P1-09 的设计门现已关闭，可以开始实现，
-跨 Gate 的 segment identity、descriptor、canonical serialization、failure
-lifecycle 和 temporary-project testing 语义已由 P1-XG-01 统一；但 Phase 1 只有
-在代码、测试、golden artifacts 和 CI 全部通过后才算完成。
+P1-09 Decision Record 确认。Phase 1 已完成实现和验收；P1-XG-01 已统一 segment
+identity、descriptor、canonical serialization、failure lifecycle 和 temporary-project
+testing 语义。Phase 2 的 P2-00—P2-08 与 P2-XG-01 也已全部确认，当前可以开始
+offline data and persistent Store implementation，但 Phase 2 尚未标记为 Completed。
 
 ---
 

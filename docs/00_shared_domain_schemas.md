@@ -111,7 +111,9 @@ class ResourceRef:
 
 `ResourceRef` 可以指向 feature、embedding、Similarity Matrix、媒体、原始模型
 响应或其他 artifacts。`store/key/version` 必须足以在一次可复现实验中解析到
-确定资源。
+确定资源，但 portable ref 不拥有机器 root binding。P2 filesystem loader 必须另外由
+trusted validated root registry 构造；exact release ref 是 portable identity handoff，
+不是携带 absolute path 的自包含 locator。
 
 公共 Schema 保持 `checksum: str | None`，以兼容 Phase 1 Mock refs 和未来
 non-filesystem Stores。P2-03 对 Phase 2 filesystem source/generated resources
