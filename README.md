@@ -374,6 +374,7 @@ while True:
 - `todo/implementation_roadmap.md`
 - `todo/phase_1_discussion.md`
 - `todo/phase_2_discussion.md`
+- `todo/phase_3_discussion.md`
 
 `todo/` 中的内容用于逐项讨论，并不自动代表已经确认的研究或实现决策。
 
@@ -465,3 +466,6 @@ loop 内执行切分或批量特征提取。Fixture invocation 只用于复现 P
 - whether RL is needed after supervised value learning
 
 这些只能作为 configurable research choices，而不能因为 V1 实现方便就默认成为最终方案。
+各项 TBD 的第一条 baseline 和后续研究阶段归属见
+`todo/implementation_roadmap.md` 的 `Deferred Research Ownership`，阶段归属不代表具体
+公式、模型或阈值已经确认。

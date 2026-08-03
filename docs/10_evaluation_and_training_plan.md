@@ -40,7 +40,21 @@ stable / emerging / fading update
 
 第一阶段可以先 offline 或 simulated。
 
-### Stage 4 — Build Oracle/Teacher Perception Data
+### Stage 4 — Build Real Active-Perception Baseline
+
+在调用真实 MLLM 前先建立：
+
+- Rule-based Information Need baseline
+- heuristic/relevance-based Segment Value baseline
+- Information-Need-aware MLLM Perceiver
+- structured Evidence parser/aggregation
+- explainable residual Score Updater
+- score/stop compatibility and perception-cost artifacts
+
+该阶段提供第一条可运行 baseline，不宣布最终 Information Need、Segment Value 或
+Score Update 研究方案。
+
+### Stage 5 — Build Oracle/Teacher Perception Data
 
 对 sampled recommendation state 和 segment：
 
@@ -49,7 +63,7 @@ stable / emerging / fading update
 - update ranking
 - calculate actual recommendation gain
 
-### Stage 5 — Train Segment Value Model
+### Stage 6 — Train Segment Value Model
 
 学习：
 
@@ -58,19 +72,20 @@ state + information need + cheap segment proxy
 → expected recommendation gain
 ```
 
-### Stage 6 — Train Score Updater / Reranker
+### Stage 7 — Optional Learned Score Updater / Reranker
 
-具体设计当前：
+Phase 4 的 explainable residual baseline 足以支撑第一条完整 loop。只有 baseline evaluation
+证明需要 learned/unified update 时才进入本 Stage；其具体设计当前：
 
 ```text
 TBD
 ```
 
-### Stage 7 — Integrate End-to-End Agent
+### Stage 8 — Integrate End-to-End Agent
 
 运行完整 active-perception loop。
 
-### Stage 8 — Optional RL
+### Stage 9 — Optional RL
 
 只有 supervised system 稳定之后再考虑。
 

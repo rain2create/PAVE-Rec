@@ -8,9 +8,9 @@
 它不替代 01—10 模块设计文档，也不提前决定其中标记为 `TBD` 的研究问题。
 每个阶段只实现支撑下一阶段所必需的最小能力，并保持研究策略可配置、可替换。
 
-本文件属于活跃规划，不是已经确认的研究设计。当前只推进 Phase 1；其逐项
-讨论和确认状态记录在 `todo/phase_1_discussion.md`。后续 Phase 在进入前分别
-建立自己的 discussion 文件。
+本文件属于活跃规划，不是已经确认的研究设计。Phase 1/2 已完成；当前进入
+Phase 3 设计确认，其逐项讨论状态记录在 `todo/phase_3_discussion.md`。后续 Phase
+仍需在进入前分别建立自己的 discussion 文件。
 
 ---
 
@@ -449,6 +449,13 @@ Python 3.12 全部通过。Phase 2 Definition of Done 已满足，状态正式�
 
 用真实 Cheap Path 替换 Phase 1 中的用户状态和初始排序 Mock。
 
+### Research Decision Gate
+
+Phase 3 开始主体编码前，必须先逐项完成 `todo/phase_3_discussion.md` 的
+P3-00—P3-08，并通过 P3-XG-01 跨 Gate 一致性检查。所有实现必须保持 Phase 1
+Controller/public schemas/interfaces 与 Phase 2 exact-release/Store/data-plane 契约；
+未确认研究事项只能保留为 interface、config 或显式 `TBD`。
+
 ### User Memory 工作内容
 
 - Preference Atom builder interface
@@ -478,6 +485,12 @@ User Memory 与 SASRec 仍然独立，在 Recommendation State 层汇合。
 - Agent Controller 无需修改即可从 Mock 切换到真实 Cheap Path
 - 初始 ranking 可在 perception budget 为零时独立运行和评估
 
+### 当前状态 — `In Discussion`
+
+P1/P2 handoff、目标数据集、derived sequence dataset、SASRec、checkpoint/score
+semantics、Preference Atom、Dynamic Memory、runtime integration 和 Phase 3
+Definition of Done 正按 `todo/phase_3_discussion.md` 逐项确认；尚未授权主体实现。
+
 ---
 
 ## 8. Phase 4 — MLLM Evidence and Score-Update Baseline
@@ -486,17 +499,31 @@ User Memory 与 SASRec 仍然独立，在 Recommendation State 层汇合。
 
 接入真实昂贵感知路径，并建立从 Evidence 到 ranking update 的可解释 baseline。
 
+### Research Decision Gate
+
+Phase 4 开始实现前建立独立 discussion，首先确认 real active-path handoff：P3 Memory
+readiness、第一条 rule-based Information Need、真实候选可用的非学习式 Segment Value、
+MLLM/Evidence contract、可解释 residual score update、cost artifacts 和 StopPolicy
+兼容性。Phase 4 只确认第一条 baseline，不宣布最终研究公式或模型。
+
 ### 工作内容
 
+- Rule-based Information Need baseline
+- first normalized need vocabulary and deterministic need selection
+- heuristic/relevance-based Segment Value baseline for real candidates
 - MLLM Perceiver adapter
 - frame/clip input resolver
+- configurable frame-sampling baseline
 - Information-Need-aware prompt
 - raw response logging
+- first versioned structured Evidence attribute vocabulary
 - Evidence Parser、schema validation 和 repair
 - Evidence State aggregation
 - perception cost logging
 - Mock Score Updater 的一致性基线
 - Residual Score Updater baseline
+- score-scale/calibration and StopPolicy compatibility
+- additive raw-response/cost artifact contract that preserves Phase 1 trace/replay
 
 ### 必须记录的成本
 
@@ -510,10 +537,13 @@ User Memory 与 SASRec 仍然独立，在 Recommendation State 层汇合。
 ### 验收标准
 
 - 只有被选择的 segment 触发昂贵感知
+- Information Need 从 Recommendation State 产生且不预先绑定某个 item
+- 第一条真实 loop 不依赖 `mock-v1` fixture keys 选择 segment
 - MLLM 输出先变成 Evidence，不直接成为最终 recommendation score
 - parser failure 有明确状态，不会静默污染 ranking
 - 未观察 item 的 initial prior 仍然有效
 - 同一 Evidence 可以离线重放 score update
+- raw response/cost logging 不改变既有 Phase 1 State/Trace 语义
 
 ### 本阶段保留为可替换策略
 
@@ -616,6 +646,7 @@ Segment Value Model。
 可能方向：
 
 - Learned Information Need
+- Dynamic Memory and SASRec fusion
 - richer or learned ranking uncertainty
 - Unified Evidence Reranker
 - learned stopping
@@ -643,3 +674,24 @@ Segment Value Model。
 8. 所有实验都记录感知成本，而不只记录 recommendation accuracy。
 9. 所有 `TBD` 研究选择通过接口或配置保留替换能力。
 10. Mock、Baseline 和 Learned implementations 可以在同一 Controller 下切换。
+
+---
+
+## 13. Deferred Research Ownership
+
+本表只记录尚未最终确定的问题在哪一阶段获得第一条 baseline 和后续研究归属，避免
+某项工作仅被写成“不在本阶段”后失去落点。它不确认具体公式、模型或阈值。
+
+| Research choice | First baseline / compatibility decision | Later evaluation or advanced destination |
+|---|---|---|
+| target dataset and interaction semantics | Phase 3 | Phase 6 multi-dataset/generalization experiments |
+| segmentation and cheap proxy strategy | Phase 2 manifest/structural baseline | Phase 4 usable heuristic proxy; Phase 6 ablations; optional Phase 7 extensions |
+| Preference Atom、matching、EMA、promotion、decay | Phase 3 | Phase 6 Memory evaluation; optional Phase 7 learned/fused Memory |
+| SASRec split、negative sampling、candidate scoring | Phase 3 | Phase 6 recommendation experiments |
+| Information Need vocabulary and estimator | Phase 4 rule-based baseline, with Phase 3 Memory readiness | Phase 6 ablation; Phase 7 learned estimator |
+| MLLM、frame sampling、Evidence vocabulary/parser | Phase 4 | Phase 6 cost/quality ablations |
+| score update and evidence aggregation | Phase 4 explainable residual baseline | Phase 6 evaluation; Phase 7 unified/learned reranker |
+| Oracle、expected-gain label、Value architecture/loss | Phase 5 supervised baseline | Phase 6 evaluation; Phase 7 uncertainty/risk/RL extensions |
+| ranking uncertainty and stopping | Phase 3 score-scale compatibility; Phase 4 active-path thresholds | Phase 6 ablation; Phase 7 learned/joint stop policy |
+| Memory–SASRec fusion | Phase 3 explicitly separate | Phase 7 optional advanced research |
+| reinforcement learning | none in Phases 1—6 | Phase 7 only after supervised system is stable |

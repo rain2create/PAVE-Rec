@@ -104,13 +104,20 @@ PreferenceImportance(k)
 Phase 1 只使用 deterministic `MockInformationNeedEstimator` 验证接口和数据流，
 不实现或默认任何真实 Information Need 算法。
 
-后续第一个真实 baseline 可以讨论：
+Phase 3 负责产生可供本模块消费的真实 `UserMemoryView`，并确认 atom、match、drift、
+embedding/matrix refs 的 Information Need readiness；Phase 3 不实现真实 estimator，
+也不根据 Memory 单独推断 evidence gap 或 ranking relevance。
+
+Phase 4 在 MLLM prompt/perception 之前必须通过独立 Gate 确认第一条真实 rule-based
+baseline。该 Gate 至少讨论：
 
 1. 获取 top user preference atoms
 2. 判断 top competing candidates 在哪些 preference dimensions 上 evidence 很弱
 3. 优先选择最能影响候选区分的维度
 
 Rule-based estimator 是候选 baseline，不是已经确认的最终研究选择。
+Learned estimator 只在 Phase 6 完成 baseline evaluation 后作为 Phase 7 optional
+advanced research 讨论。
 
 Interface：
 

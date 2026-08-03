@@ -190,6 +190,12 @@ UnifiedEvidenceRanker
 MockScoreUpdater
 ```
 
+Phase 4 必须在真实 MLLM Evidence 进入 ranking 前确认第一条可解释 residual baseline，
+包括 Evidence aggregation、delta 的确定性含义、score scale/calibration、未观察 item prior
+保留和 StopPolicy compatibility。它是可替换 baseline，不代表 residual 已成为最终研究
+架构。Unified/learned reranker 在 Phase 6 完成 baseline evaluation 后归入 Phase 7
+optional advanced research。
+
 ---
 
 ## 6. Reranking
