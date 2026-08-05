@@ -24,11 +24,10 @@ Phase 2 exact release
 本阶段实现的是第一条真实、低成本推荐先验和用户记忆 baseline，不接入真实 MLLM，
 不决定最终 Information Need、Segment Value 或 Score Update 研究方案。
 
-Phase 3 当前整体状态：`Local Implementation Complete / Remote CI Pending`（P3-00—P3-08 与
-P3-XG-01 已确认，全部真实 lifecycle 和本地 Definition of Done gates 已通过；同一 candidate commit 的
-required remote CI 尚未执行，因此仍不是 `Completed`）。
+Phase 3 当前整体状态：`Completed`。P3-00—P3-08 与 P3-XG-01 已确认，全部真实 lifecycle、
+本地 Definition of Done gates 和同一 completion commit 的 required remote CI 均已通过。
 
-### 1.1 Implementation progress（2026-08-04）
+### 1.1 Implementation progress（2026-08-05）
 
 Phase 3 implementation 已完成并保持 P1/P2 public contract 不变：
 
@@ -45,9 +44,10 @@ Phase 3 implementation 已完成并保持 P1/P2 public contract 不变：
   Dynamic Memory/audit、MostPop/SASRec full-catalog evaluation、101-candidate zero-budget Agent 和 replay；
 - exact real artifacts、真实 aggregate metrics 和运行引用已同步到 stable docs。
 
-当前本地验收：完整 suite `275 passed, 2 skipped`；branch coverage `90.03%`；Ruff clean；Windows
-short-basetemp 全套通过并关闭原 285 字符临时发布路径问题。剩余 gate 仅为同一 candidate commit 的 required
-remote CI；未通过远端前不得标记 `Completed`。
+本地验收：完整 suite `275 passed, 2 skipped`；branch coverage `90.03%`；Ruff clean；Windows
+short-basetemp 全套通过并关闭原 285 字符临时发布路径问题。completion commit `5e78957` 的 required
+GitHub Actions run `30975939269` 在 Ubuntu/Python 3.10、Ubuntu/Python 3.12 和 Windows/Python 3.12
+三项全部通过，Phase 3 Definition of Done 已关闭。
 
 首条真实 artifact/run closure：
 
@@ -2252,15 +2252,20 @@ Implementation 已关闭该 follow-up：portable `bundles/<data_version>/...`、
 checksum 与 path-safety contract 保持不变；Windows physical staging 使用 deterministic 128-bit operational token，
 trusted absolute storage roots 在实际 filesystem I/O 边界使用 extended-length path。原失败面定向测试为
 `21 passed`；当前 short-basetemp 完整 suite 为 `275 passed, 2 skipped`，branch coverage `90.03%`，Ruff clean。
-这关闭了 local Windows path、真实 lifecycle 与本地 quality gates；同一 candidate commit remote CI 仍须满足。
+
+首个 implementation commit `2adc4dc` 的 remote run `30975413120` 暴露了两个 CI-only packaging/checkout
+问题：`.[dev]` 未安装 optional PyTorch，导致两项 SASRec test modules 被跳过且 Linux coverage 只有
+`79.97%`；Windows checkout 又把 checksummed `.md/.csv` fixture 转为 CRLF，导致 snapshot size/checksum
+失败。completion commit `5e78957` 将 CI 固定为 CPU PyTorch + `.[dev,training]`，并用 `.gitattributes`
+固定 fixture LF。干净 Windows checkout 的三个 fixture size/SHA-256 与 snapshot 一致，原失败组合测试
+`22 passed`；required run `30975939269` 的三个 OS/Python jobs 全部通过。
 
 ### 12.5 Authorization boundary
 
-P3-XG-01 Confirmed 授权的 Phase 3 主体实现现已在本地完成，并遵守上述 constraints。它不授权提前实现
-Phase 4/5/7、不授权发布受限数据/artifacts，也不表示 Phase 3 `Completed`。只有 P3-08 Definition of Done 的真实
-single-seed Tsinghua lifecycle、zero-budget Agent/replay、Memory/evaluation artifacts、tests/coverage/Ruff 和同一
-candidate commit remote CI 全部通过后，路线图才能从 `Local Implementation Complete / Remote CI Pending`
-改为 `Completed`。
+P3-XG-01 Confirmed 授权的 Phase 3 主体实现遵守上述 constraints。P3-08 Definition of Done 所要求的真实
+single-seed Tsinghua lifecycle、zero-budget Agent/replay、Memory/evaluation artifacts、tests/coverage/Ruff 和
+同一 completion commit remote CI 均已通过，因此 Phase 3 状态为 `Completed`。该完成状态不授权提前实现
+Phase 4/5/7，也不授权发布受限数据/artifacts。
 
 ### P3-XG-01 Decision Record
 
@@ -2286,8 +2291,9 @@ Decision:
    real restricted data/artifacts 留在 local/external roots。
 9. Contract fixture、single-seed real pipeline、three-seed reportable result 和 CI/real experiments 边界一致；P1/P2
    regressions 与 P3-08 quality/DoD gates 全部保留。
-10. 当前状态是 Local Implementation Complete / Remote CI Pending，不是 Completed；Windows local full-suite
-    path-length follow-up、真实 lifecycles 和本地 quality gates 已关闭，required remote CI 必须在完成前关闭。
+10. Completion 必须同时关闭 Windows local full-suite path-length follow-up、真实 lifecycles、本地 quality gates
+    和同一 commit 的 required remote CI；这些 gate 已由 commit `5e78957` / run `30975939269` 全部关闭，
+    Phase 3 状态为 Completed。
 Rationale:
 逐项核对确认现有 P1/P2 seams 足以承载真实 Memory、SASRec、persistent Stores 和 zero-budget Controller run。
 对 shared history、empty segment catalog 和两种 candidate count 的显式消歧，消除了实现时最可能导致接口扩张、
@@ -2321,7 +2327,8 @@ data/artifact redistribution permission。
 Resolved implementation follow-up:
 Windows physical-path-length full-suite failure 已关闭，未缩短 portable full-SHA identity、未削弱 path safety；
 定向 `21 passed`，当前完整 suite `275 passed, 2 skipped`，branch coverage `90.03%`，Ruff clean；真实 P3
-lifecycles、evaluation、Memory audit 和 zero-budget replay 均已通过，remote required CI pending。
+lifecycles、evaluation、Memory audit 和 zero-budget replay 均已通过；completion commit `5e78957` 的
+required GitHub Actions run `30975939269` 三项 matrix jobs 全部通过。
 Confirmed by: User
 Date: 2026-08-04
 ```

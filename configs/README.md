@@ -134,12 +134,14 @@ the same deterministic single-parent inheritance semantics, but foreign/unknown
 fields fail and training/build/runtime/metric parameters do not share one giant
 schema.
 
-Implementation status (2026-08-04): all committed Phase 3 lifecycle models,
-APIs, and CLI routes are implemented and locally accepted. This includes the
+Implementation status (2026-08-05): Phase 3 is `Completed`. All lifecycle models,
+APIs, and CLI routes are implemented and accepted. This includes the
 Tsinghua adapter, derived sequences, pinned BGE-M3 semantics, SASRec training,
 Dynamic Memory, Memory audit, full-catalog evaluation, zero-budget runtime, and
-saved-output replay. Remote required CI on the candidate commit is still pending,
-so Phase 3 is not yet marked `Completed`.
+saved-output replay. Local acceptance is `275 passed, 2 skipped`, 90.03% branch
+coverage, and clean Ruff checks. Required GitHub Actions run `30975939269` for
+completion commit `5e78957` passed on Ubuntu/Python 3.10, Ubuntu/Python 3.12,
+and Windows/Python 3.12.
 
 Each lifecycle declares only the roots it needs and reuses the typed root-registry
 path/access rules. Machine-local child configs may bind portable root IDs to external
