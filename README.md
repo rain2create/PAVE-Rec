@@ -205,6 +205,16 @@ offline data and persistent Store。Phase 2 baseline、portable golden、
 persistent Store Agent smoke、本地 quality gates 和远端 Ubuntu/Windows CI matrix
 已全部通过；Phase 2 Definition of Done 已满足，状态正式记为 `Completed`。
 
+Phase 3 的 P3-00—P3-08 与 P3-XG-01 也已全部确认：第一条真实主线使用 pinned Tsinghua
+ShortVideo sampled release，构建 versioned derived sequence、dataset-specific SASRec、Dynamic
+Hybrid Memory、full-catalog evaluation 和 unchanged Controller zero-budget Cheap Path。跨 Gate
+审计已确认不修改 P1 public interfaces/Controller 或 P2 exact-release data plane；Phase 3 当前为
+`Local Implementation Complete / Remote CI Pending`：P3-01—P3-08 的真实单 seed lifecycle、MostPop/SASRec
+full-catalog evaluation、Memory aggregate audit、zero-budget Agent run/replay 和 Windows long-path 回归均已
+跑通。本地验收为 `275 passed, 2 skipped`、branch coverage `90.03%`、Ruff clean；由于 P3-08 还要求同一
+candidate commit 的远端 required CI，因此现在仍不标记为 `Completed`。完整约定与精确产物引用见
+`todo/phase_3_discussion.md`。
+
 ---
 
 ## 4. 核心数据流 Core Data Flow

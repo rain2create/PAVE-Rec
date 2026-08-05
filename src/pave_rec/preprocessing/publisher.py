@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import tempfile
 from collections.abc import Callable
@@ -14,6 +15,27 @@ from .artifacts import ReleasePublicationPlan, RootPublication
 from .paths import FilesystemPathResolver, RootRegistry
 
 FaultInjector = Callable[[str], None]
+
+
+def publication_staging_key(root_id: str, data_version: str, execution_id: str) -> str:
+    """Return an undiscoverable operational staging key.
+
+    Windows without long-path support cannot materialize the portable bundle keys
+    below the historical ``staging/<data_version>/<execution_id>`` prefix once the
+    full SHA-256 identities are included.  The staging location is invocation-local
+    and excluded from artifact identity, so Windows uses a deterministic opaque token
+    while published bundle keys remain byte-for-byte unchanged.
+    """
+
+    if os.name != "nt":
+        return f"staging/{data_version}/{execution_id}"
+    identity = "\0".join((root_id, data_version, execution_id)).encode("utf-8")
+    # This is an operational namespace key, not an artifact identity.  A
+    # 128-bit prefix keeps legacy Windows paths below MAX_PATH while retaining
+    # ample collision resistance; mkdir(exist_ok=False) also fails closed if a
+    # collision ever occurs.
+    token = hashlib.sha256(identity).hexdigest()[:32]
+    return f"staging/{token}"
 
 
 @dataclass(frozen=True)
@@ -66,7 +88,7 @@ class FilesystemReleasePublisher:
 
     def _write_stage(self, root: RootPublication, *, execution_id: str) -> Path:
         bundle_prefix = f"bundles/{root.manifest.data_version}/"
-        stage_key = f"staging/{root.manifest.data_version}/{execution_id}"
+        stage_key = publication_staging_key(root.root_id, root.manifest.data_version, execution_id)
         stage = self._expected_path(root.root_id, stage_key)
         try:
             stage.mkdir(parents=True, exist_ok=False)

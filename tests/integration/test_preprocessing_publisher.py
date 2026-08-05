@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Barrier
@@ -11,7 +12,10 @@ from pave_rec.preprocessing.artifacts import ReleasePublicationPlan, build_relea
 from pave_rec.preprocessing.components import build_preprocessing_components
 from pave_rec.preprocessing.config import load_preprocessing_config
 from pave_rec.preprocessing.identity import build_data_identity, data_version
-from pave_rec.preprocessing.publisher import FilesystemReleasePublisher
+from pave_rec.preprocessing.publisher import (
+    FilesystemReleasePublisher,
+    publication_staging_key,
+)
 from pave_rec.preprocessing.source import load_source_dataset
 
 
@@ -52,6 +56,18 @@ def test_release_plan_has_expected_fixture_graph(preprocessing_project: Path) ->
         "features",
         "processed",
     )
+
+
+def test_publication_staging_key_is_operational_and_deterministic() -> None:
+    first = publication_staging_key("features", "p2-version", "execution-a")
+    assert first == publication_staging_key("features", "p2-version", "execution-a")
+    assert first != publication_staging_key("features", "p2-version", "execution-b")
+    assert first.startswith("staging/")
+    if os.name == "nt":
+        assert len(first.split("/")) == 2
+        assert len(first.removeprefix("staging/")) == 32
+    else:
+        assert first == "staging/p2-version/execution-a"
 
 
 def test_publisher_creates_then_verifies_reuse(preprocessing_project: Path) -> None:
@@ -157,11 +173,9 @@ def test_staging_verification_detects_tampering(preprocessing_project: Path) -> 
 
     def tamper(boundary: str) -> None:
         if boundary == "after_stage_write:features":
-            stage = (
-                loaded.root_registry.require("features").path
-                / "staging"
-                / plan.data_version
-                / execution_id
+            root = loaded.root_registry.require("features")
+            stage = root.path.joinpath(
+                *publication_staging_key(root.root_id, plan.data_version, execution_id).split("/")
             )
             target = next(path for path in stage.rglob("*.json") if path.is_file())
             target.write_bytes(b"tampered")

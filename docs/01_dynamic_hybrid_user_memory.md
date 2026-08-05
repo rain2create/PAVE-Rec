@@ -441,17 +441,114 @@ LLM semantic profile != primary online memory update mechanism
 
 ## 11. First Real Implementation (Phase 3)
 
-Phase 3 的第一条真实 User Memory baseline 可以先使用：
+P3-05 已确认第一条 Atom/embedding 输入契约。必须先区分两套独立表示：SASRec 从目标数据集的
+item-ID sequence 学习 trainable item embeddings 和 sequential hidden state；Dynamic Memory 使用冻结文本
+encoder 从 item title/tags/category 生成 semantic embeddings。首版不把后者注入 SASRec，两条支路只在
+Recommendation State 和后续 Agent/Segment Value 消费边界汇合。
 
-- text descriptions for atoms
-- one embedding model
-- cosine similarity
-- configurable thresholds
-- EMA update
-- simple persistence count
-- simple decay
+首版采用 one-item-one-`ItemSemanticPrototype`：
 
-所有 threshold 和 update coefficient 都必须配置化。
+```text
+P2 SourceItem
+    → canonical title/tags/category semantic text
+    → reusable ItemSemanticPrototype + external embedding ResourceRef
+    → positive_v1 observation
+    → P3-06 user-specific long/short PreferenceAtom
+```
+
+prototype 是用户无关的静态语义来源，不包含 long/short side、state、strength 或 persistence。同一 item
+的 repeated positives 保留为多个 observations，但复用同一 prototype/embedding；P3-06 才决定 observation
+如何形成 long/short atoms，并保证 public atom IDs 在两侧全局唯一。
+
+Tsinghua `tsv-item-semantic-text-v1` 只按 title、tags、Chinese category paths 的固定顺序组合实际存在的
+字段，不伪造 description、`unknown` 或生成式摘要。只有 `tsv-positive-v1` 产生正向 preference
+observation；negative/passive 首版不生成正向 Atom。tag/category-level atoms、跨 item clustering 和
+learned extraction 是后续 ablation。
+
+第一条 embedding recipe 是 `bge-m3-dense-v1`：固定 `BAAI/bge-m3` exact revision
+`5617a9f61b028005a4858fdac845db406aefb181`、`FlagEmbedding==1.4.0`、dense CLS、无 instruction、
+max 1,024 tokens、1,024 dimensions、FP32 L2 normalization 和 cosine similarity。模型与 embeddings
+只能离线准备并以 immutable P3 item-semantic artifact 发布；Tensor 不进入 `UserMemoryView`，只通过
+`ResourceRef` 解析。online Agent 不下载模型或批量生成 embeddings。
+
+P3-05 固定 `semantic_profile=None`。P3-06 已确认下面的 cosine matching、threshold、EMA、persistence、
+decay、drift 和 artifact persistence baseline；所有 threshold/update coefficient 仍必须配置化和版本化。
+
+### 11.1 P3-06 confirmed Dynamic Memory baseline
+
+P3-06 的主流程固定为：
+
+```text
+positive history + P3-05 semantic prototypes
+        ↓
+recent-5 Short Memory + accumulated Long/Pending Memory
+        ↓ cosine matching
+Stable 强化 / Emerging 累积晋升 / Fading 衰减
+        ↓
+Drift（只读摘要，不反向更新）
+        ↓
+immutable UserMemoryView snapshot
+```
+
+Short 是最近 5 个 valid positive semantic observations；Long 是全部 cutoff-safe history 顺序 replay 后形成的
+user-specific semantic tracks，两者可以重叠，不是旧/新 history partition。Pending interest 至少跨 2 个不同
+source timestamps 得到支持后才晋升 Long。最终 View 最多投影 20 个 active Long Atoms。
+
+每个 observation 先匹配已有 Long，再匹配 Pending，统一 cosine threshold=`0.70`。Long match 对 centroid 做
+normalized EMA，`eta=0.20`；每个 Short 只选择一个 best Long，多个 Shorts 可以强化同一个 Long。匹配成功是
+stable；Short 无匹配是 emerging；Long 没有近期 Short 支持是 fading；strength `<0.10` 后成为 internal
+inactive，不硬删除并允许未来 re-activate。Fading 只表示 recent-5 中没有支持，不等于 dislike。
+
+```text
+long_strength    = (1 - exp(-support_count / 3)) * 2 ** (-age_days / 7)
+long_persistence = min(distinct_support_times / 5, 1)
+short_strength   = 2 ** (-age_index / 2)
+```
+
+New-interest drift 汇总近期新兴趣，drop-interest drift 汇总近期缺失的长期兴趣，global drift 汇总 Long/Short
+整体语义差异；三者只从最终 matrix/strength 派生为 `[0,1]` signal，不参与当前 Memory 的 matching、promotion、
+decay 或 threshold 调整，也不提前决定 Information Need/Segment Value 的公式。
+
+首版只离线生成 immutable exact-prefix snapshot。Bootstrap 用 exact snapshot ref 和 full-exposure cutoff identity
+预先绑定 adapter；Online `build_or_update()` 接收 cutoff 前完整、未截断的 `positive_v1` item-ID tuple，只验证
+user/history fingerprint/cutoff closure 后只读加载。它不按 tuple 搜索或猜 snapshot；相同 positive tuple 可能对应
+不同 full-exposure cutoff。一次 Agent run 内 View 固定；MLLM Evidence、Score Update 和 Re-rank 不更新用户兴趣。
+只有新的真实 behavior 才产生下一版 snapshot。`updated_at_ms` 使用 source event time，`semantic_profile=None`。
+
+第一条数值 recipe 是 recent=5、max-long=20、threshold=0.70、promotion-times=2、EMA=0.20、persistence
+saturation=5、half-life=7 days、inactive=0.10。它们是可复现 baseline；真实 embedding audit 后只在 validation
+做 sensitivity/选择，不读取 test，不自动漂移参数。
+
+### 11.2 Phase 3 evaluation boundary
+
+Memory implementation acceptance 使用 deterministic golden transitions 精确验证 stable/emerging/promotion/
+fading/inactive/reactivation、empty axes、same-time/repeat/idempotency、cutoff/leakage、drift boundaries、atomic
+persistence/reload 和 public `UserMemoryView` references。真实 Tsinghua build 另报告 semantic/Memory coverage、
+long-empty、state/promotion/inactive counts、atom-count、cosine 和 drift distributions；这些 aggregate audit 是
+诊断，不是人工 ground truth，也不触发自动 threshold 调整。
+
+在 P3 zero-budget Cheap Path 中尚无 Information Need/Segment Value/Score Updater 消费 Memory，因此加载
+Dynamic Memory 前后，同 checkpoint/candidates 的 SASRec ranking 必须完全一致。P3 只证明 cutoff-safe Memory
+能稳定进入 Recommendation State 并满足后续 public-view-only consumption，不声称已经提高 NDCG。Memory
+next-item gain、interest-state agreement 和最终 benchmark 留到 Phase 6。
+
+### 11.3 First real aggregate audit (2026-08-04)
+
+第一条 Tsinghua validation/test exact-prefix Memory artifact 为
+`p3memoryartifact-0c2370bf509742115e03b101e3224c766e6c454e6af6bba8ca24f7d2ce34d3e7`。
+对应 immutable audit 为
+`p3memoryaudit-89ce25a5d9bb5544772dc6cdfc0eec788e5b14ce29db3f4ae8a1d0c887b58bcf`
+（`sha256:11b4a9d555d5d0a22a336ca3d98a83e0575b3d7ee59f864fb8dd1ed292a1f47e`）。
+
+审计覆盖 `8,596` snapshots 和 `164,446` semantic observations，snapshot semantic coverage 为
+`1.0`；得到 `4,667` stable、`5,796` fading、`130,407` pending/emerging、`0` inactive tracks，
+promotion 数为 `10,463`。Long non-empty snapshot rate 为 `0.549558`，Short empty snapshot 为 `0`；
+`29,267` 个 cosine observations 的 mean/p50/p90/p99 分别约为
+`0.645856/0.609585/0.842040/0.990675`，global/new/drop drift mean 分别约为
+`0.180950/0.640560/0.230850`。
+
+Pending 数量较高是需要在 Phase 6 做 `{0.60, 0.70, 0.80}` threshold sensitivity 的诊断信号，不能据此
+读取 test 后自动修改当前 `0.70` baseline，也不能把 aggregate audit 写成兴趣分类 ground truth。
 
 Phase 1 只实现固定查表的 `MockUserMemory`，不实现上述 atom extraction、matching、
 EMA、persistence 或 decay baseline。
@@ -462,11 +559,11 @@ EMA、persistence 或 decay baseline。
 
 下面这些当前不要替我们做研究决定：
 
-- how preference atoms are extracted / clustered
-- exact time window defining short-term behavior
-- one-to-one vs many-to-one matching policy
-- stable/emerging/fading thresholds
-- EMA coefficient
-- persistence scoring
-- decay function
+- alternative tag/category, clustered, or learned atom extraction
+- negative/passive feedback in memory updates
+- embedding-model ablations beyond `bge-m3-dense-v1`
+- alternative recent/time windows beyond recent-5
+- one-to-one/Hungarian matching beyond many-short-to-one-long
+- threshold sensitivity beyond the `0.70` baseline
+- alternative EMA/persistence/decay formulas
 - semantic profile refresh policy

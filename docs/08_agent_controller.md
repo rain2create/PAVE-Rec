@@ -474,7 +474,62 @@ Phase 1 的固定输入、两步预期运行和各 Mock component 查表映射�
 
 ---
 
-## 9. TBD
+## 9. Phase 3 Real Cheap Path Integration
+
+P3-07 keeps `AgentController` and all public component protocols unchanged. The
+first real integration injects an immutable `ArtifactUserMemory`, a dataset-specific
+`SasrecInitialRanker`, and the existing persistent filesystem Item/Segment Stores.
+The exact P2 release, P3 derived/semantic/checkpoint/Memory artifacts and fixed
+`AgentInputBundle` are validated before Controller construction.
+
+The bundle's one public history tuple is the complete, untruncated `positive_v1`
+item-ID projection before its exact cutoff. Bootstrap separately validates the
+full-exposure cutoff and binds the exact Memory snapshot; `ArtifactUserMemory` only
+validates the tuple fingerprint, while SASRec applies OOV filtering and recent-50
+internally. The tuple is never used to guess a Memory snapshot, and no second history
+field is added to `AgentRunRequest`.
+
+```text
+exact Memory snapshot + SASRec checkpoint + persistent Stores
+        ↓
+unchanged AgentController builds Recommendation State
+        ↓
+max_perception_actions = 0
+        ↓
+pre-value StopPolicy returns budget_exhausted
+```
+
+Phase 4/5 roles use explicit unavailable guards rather than Mock outputs. Runtime
+config validation requires zero budget while any guard is selected, and an accidental
+guard call is a declared component failure. This proves the real Cheap Path without
+executing or claiming a real Information Need, Segment Value, Perceiver, or Score
+Updater.
+
+The real runner preflights the closed exact artifact graph, request prefix/candidate
+coverage and device before allocating a formal run directory. A successful smoke
+still writes exactly `resolved_config.json`, `trace.jsonl`, and `result.json`; model,
+Memory and dataset payloads remain external behind versioned references. P3 resolved
+config/result metadata record exact portable refs without physical paths or secrets,
+and trace/state schemas do not change. Structural replay recognizes the P3 resolved
+config discriminator but does not load tensors or re-execute components. Existing
+Phase 1 mock configs, descriptors, golden artifacts and replay behavior remain
+unchanged.
+
+The first exact real run is `runs/phase3/20260804T141855Z-40d12921`. It consumed
+the pinned P2/derived/semantic/SASRec/Memory/input artifact graph, built a real
+101-candidate Recommendation State, attempted zero perception actions, wrote one
+terminal trace record, and stopped successfully with `budget_exhausted`. The same
+directory passes discriminator-aware saved-output replay without loading tensors or
+re-executing the Controller:
+
+```text
+python -m pave_rec.cli.phase3 run --config configs/phase3/runtime_zero_budget.yaml
+python -m pave_rec.cli.phase3 replay --run-dir runs/phase3/20260804T141855Z-40d12921
+```
+
+---
+
+## 10. TBD
 
 - whether stop is predicted by a learned policy
 - whether segment selection and stop become a unified action space

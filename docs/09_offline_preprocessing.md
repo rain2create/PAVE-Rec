@@ -718,6 +718,15 @@ fails with `ArtifactIntegrityError`. Concurrent runs rely on exclusive filesyste
 create/rename, not a lock service. Complete orphan bundles can be verified and
 reused; partial staging cannot.
 
+The staging path is operational and excluded from portable identity. On Windows,
+where the historical prefix plus full-SHA artifact keys can exceed the legacy path
+limit, the physical staging location is `staging/<128-bit sha256 prefix(root, data
+version, execution ID)>`, and trusted absolute storage roots use the Windows
+extended-length path form at the filesystem boundary. Published
+`bundles/<data_version>/...` keys, full checksums, release bytes and no-overwrite
+semantics are unchanged. `ExecutionReport.staging_locations` always records the
+actual physical staging location used by the invocation.
+
 第一版没有 dry-run、resume、force、no-reuse、checkpoint recovery、automatic cleanup
 或 deletion。Interruption/failure 不发布 release marker；staging remains undiscoverable
 and is not reused.

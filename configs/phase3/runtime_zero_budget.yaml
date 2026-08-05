@@ -1,0 +1,94 @@
+schema_version: "1"
+kind: phase3-runtime
+
+storage:
+  roots:
+    processed:
+      path: data/processed
+      access: read_only
+    features:
+      path: artifacts/features
+      access: read_only
+    source_output:
+      path: data/interim
+      access: read_only
+    derived:
+      path: data/derived
+      access: read_only
+    semantics:
+      path: artifacts/semantics
+      access: read_only
+    checkpoints:
+      path: artifacts/checkpoints
+      access: read_only
+    memory:
+      path: artifacts/memory
+      access: read_only
+    inputs:
+      path: artifacts/inputs
+      access: read_only
+    phase3_runs:
+      path: runs/phase3
+      access: write_new
+
+seed: 20260804
+data_version: p2-eb8680c692ae42a2dadbd8ac2f6cbaccfdf390581b974893072eb5d10d0fd1d2
+device: cuda:0
+
+run:
+  output_root_id: phase3_runs
+  run_id: null
+
+agent:
+  max_perception_actions: 0
+
+stop:
+  ranking_margin_threshold: null
+  min_segment_value: null
+
+components:
+  user_memory: artifact
+  initial_ranker: sasrec
+  item_feature_store: persistent
+  segment_store: persistent
+  state_builder: default
+  information_need: unavailable
+  segment_value: unavailable
+  perceiver: unavailable
+  evidence_updater: unavailable
+  observation_updater: unavailable
+  score_updater: unavailable
+  stop_policy: threshold
+  trace_writer: jsonl
+
+artifacts:
+  p2_release_ref:
+    store: processed
+    key: releases/p2-eb8680c692ae42a2dadbd8ac2f6cbaccfdf390581b974893072eb5d10d0fd1d2.json
+    version: p2-eb8680c692ae42a2dadbd8ac2f6cbaccfdf390581b974893072eb5d10d0fd1d2
+    checksum: sha256:2f3ca5d53c81b9cec08067bd852e9a523499e8ce2e53df89385cbceadd1e2ada
+  derived_dataset_ref:
+    store: derived
+    key: bundles/p3derived-0965ee788706f1f190728cfeaa1f7fbaa6747941997ef068a49d9950b61083b2/derived_dataset_manifest.json
+    version: p3derived-0965ee788706f1f190728cfeaa1f7fbaa6747941997ef068a49d9950b61083b2
+    checksum: sha256:8963a04e151162ada68c874095bf4f99d7b859c9ec3bd422b0cfcf47e81dd3f0
+  item_semantics_ref:
+    store: semantics
+    key: bundles/p3semantic-5a1288d6d6a76d757649a22a90d44909b3bc1da25aff5113188f92e17203d92d/manifest.json
+    version: p3semantic-5a1288d6d6a76d757649a22a90d44909b3bc1da25aff5113188f92e17203d92d
+    checksum: sha256:0bb9f612bb922952b7b6472e12d696de3d0b0857e7696b3d4807247703e84268
+  sasrec_checkpoint_ref:
+    store: checkpoints
+    key: bundles/p3ckpt-ba0ad86774b3c6b7b601d61258ce60b1c06c1ca15d89a32e2e0169e7f3eec5d7/checkpoint_manifest.json
+    version: p3ckpt-ba0ad86774b3c6b7b601d61258ce60b1c06c1ca15d89a32e2e0169e7f3eec5d7
+    checksum: sha256:83ad9a644dca1a48354d78e728a991af1252f18b8158d7088817ae142572820e
+  memory_snapshot_ref:
+    store: memory
+    key: bundles/p3memoryartifact-0c2370bf509742115e03b101e3224c766e6c454e6af6bba8ca24f7d2ce34d3e7/manifest.json
+    version: p3memoryartifact-0c2370bf509742115e03b101e3224c766e6c454e6af6bba8ca24f7d2ce34d3e7
+    checksum: sha256:c1bb6fdb86f4ac1fc5f147df0f765caf80743e56e3d3147daf832d7515316f97
+  agent_input_bundle_ref:
+    store: inputs
+    key: bundles/p3input-fdf2733f0b4aa678cc426c9014b77ac68b55d1e62a2073e59932381aa8a487f0/agent_input_bundle.json
+    version: p3input-fdf2733f0b4aa678cc426c9014b77ac68b55d1e62a2073e59932381aa8a487f0
+    checksum: sha256:e2fd6cb94a956a707e7ea6be24bb8c73dd1afd125627bceb4ac7db1b81aef5f7

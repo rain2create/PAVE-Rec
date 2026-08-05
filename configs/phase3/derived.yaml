@@ -1,0 +1,34 @@
+schema_version: "1"
+kind: phase3-derived-sequences
+
+storage:
+  roots:
+    processed:
+      path: data/processed
+      access: read_only
+    features:
+      path: artifacts/features
+      access: read_only
+    source_output:
+      path: data/interim
+      access: read_only
+    derived:
+      path: data/derived
+      access: write_new
+
+source_release_ref:
+  store: processed
+  key: releases/p2-eb8680c692ae42a2dadbd8ac2f6cbaccfdf390581b974893072eb5d10d0fd1d2.json
+  version: p2-eb8680c692ae42a2dadbd8ac2f6cbaccfdf390581b974893072eb5d10d0fd1d2
+  checksum: sha256:2f3ca5d53c81b9cec08067bd852e9a523499e8ce2e53df89385cbceadd1e2ada
+
+output_root_id: derived
+positive_recipe: tsv-positive-v1
+split_recipe: user-chronological-leave-two-out-v1
+eligibility_recipe: min-positive-5
+sasrec_view_recipe: sasrec-recent-50-v1
+max_history_length: 50
+vocabulary_recipe: train-positive-utf8-order-pad0-v1
+primary_candidate_recipe: full-train-vocabulary-seen-positive-mask-v1
+include_development_candidates: true
+eval_negative_seed: 20260804

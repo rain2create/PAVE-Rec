@@ -1,0 +1,55 @@
+schema_version: "1"
+kind: phase3-memory
+
+storage:
+  roots:
+    processed:
+      path: data/processed
+      access: read_only
+    features:
+      path: artifacts/features
+      access: read_only
+    source_output:
+      path: data/interim
+      access: read_only
+    derived:
+      path: data/derived
+      access: read_only
+    semantics:
+      path: artifacts/semantics
+      access: read_only
+    memory:
+      path: artifacts/memory
+      access: write_new
+
+source_release_ref:
+  store: processed
+  key: releases/p2-eb8680c692ae42a2dadbd8ac2f6cbaccfdf390581b974893072eb5d10d0fd1d2.json
+  version: p2-eb8680c692ae42a2dadbd8ac2f6cbaccfdf390581b974893072eb5d10d0fd1d2
+  checksum: sha256:2f3ca5d53c81b9cec08067bd852e9a523499e8ce2e53df89385cbceadd1e2ada
+
+derived_artifact_ref:
+  store: derived
+  key: bundles/p3derived-0965ee788706f1f190728cfeaa1f7fbaa6747941997ef068a49d9950b61083b2/derived_dataset_manifest.json
+  version: p3derived-0965ee788706f1f190728cfeaa1f7fbaa6747941997ef068a49d9950b61083b2
+  checksum: sha256:8963a04e151162ada68c874095bf4f99d7b859c9ec3bd422b0cfcf47e81dd3f0
+
+semantic_artifact_ref:
+  store: semantics
+  key: bundles/p3semantic-5a1288d6d6a76d757649a22a90d44909b3bc1da25aff5113188f92e17203d92d/manifest.json
+  version: p3semantic-5a1288d6d6a76d757649a22a90d44909b3bc1da25aff5113188f92e17203d92d
+  checksum: sha256:0bb9f612bb922952b7b6472e12d696de3d0b0857e7696b3d4807247703e84268
+
+output_root_id: memory
+snapshot_scope: validation-and-test
+
+recipe:
+  recipe: dynamic-hybrid-memory-v1
+  recent_short_count: 5
+  max_projected_long: 20
+  match_threshold: 0.7
+  ema_eta: 0.2
+  promotion_distinct_times: 2
+  persistence_saturation: 5
+  recency_half_life_days: 7.0
+  inactive_strength: 0.1

@@ -1,0 +1,61 @@
+schema_version: "1"
+kind: phase3-sasrec-training
+
+storage:
+  roots:
+    derived:
+      path: data/derived
+      access: read_only
+    checkpoints:
+      path: artifacts/checkpoints
+      access: write_new
+
+derived_manifest_ref:
+  store: derived
+  key: bundles/p3derived-0965ee788706f1f190728cfeaa1f7fbaa6747941997ef068a49d9950b61083b2/derived_dataset_manifest.json
+  version: p3derived-0965ee788706f1f190728cfeaa1f7fbaa6747941997ef068a49d9950b61083b2
+  checksum: sha256:8963a04e151162ada68c874095bf4f99d7b859c9ec3bd422b0cfcf47e81dd3f0
+
+output_root_id: checkpoints
+resume_checkpoint_ref: null
+
+model:
+  recipe: sasrec-pytorch-v1
+  max_history_length: 50
+  hidden_size: 64
+  block_count: 2
+  attention_head_count: 2
+  feed_forward_size: 256
+  activation: gelu
+  normalization: pre-ln-final-ln
+  dropout: 0.2
+  initializer_std: 0.02
+  tied_item_embeddings: true
+  pad_index: 0
+
+training:
+  loss: sampled-binary-last-position-v1
+  negative_sampler: uniform-train-vocabulary-user-train-exclusion-v1
+  negatives_per_positive: 1
+  optimizer: adam
+  learning_rate: 0.001
+  beta1: 0.9
+  beta2: 0.98
+  epsilon: 0.00000001
+  weight_decay: 0.0
+  scheduler: none
+  batch_size: 128
+  max_epochs: 200
+  gradient_clip_global_norm: 5.0
+  precision: fp32
+  amp: false
+  validation_metric: warm-full-catalog-ndcg-at-10
+  selection_rule: maximum-metric-earliest-epoch-v1
+  patience: 10
+  training_seed: 20260804
+
+operational:
+  device: cuda:0
+  loader_workers: 0
+  candidate_chunk_size: 4096
+  evaluation_user_batch_size: 128

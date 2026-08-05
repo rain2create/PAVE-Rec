@@ -1,0 +1,5 @@
+category_level,category_id,category_name_cn,parent_id,root_id,category_name_en
+1,10,新闻,10,10,news
+2,11,社会,10,10,society
+1,20,美食,20,20,food
+2,21,菜谱,20,20,recipe

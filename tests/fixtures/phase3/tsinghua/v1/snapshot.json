@@ -1,0 +1,22 @@
+{
+  "artifacts": [
+    {
+      "checksum": "sha256:ba5fab312a0ff9419dfc94daff9cf76d0e098af3f1361c84485bee4341033e4d",
+      "relative_path": "README.md",
+      "size_bytes": 195
+    },
+    {
+      "checksum": "sha256:c7af53fb9844c96d3423aec6b4c7ab0e5c5259c1eb3db3e5e8f8a6aab47a312e",
+      "relative_path": "categories_cn_en.csv",
+      "size_bytes": 176
+    },
+    {
+      "checksum": "sha256:57fb53bbc6590ff99a3b2bac4571f898c35e98dd2b58b82280666251c3634c7f",
+      "relative_path": "interaction_sampled.csv",
+      "size_bytes": 2857
+    }
+  ],
+  "schema_version": "tsinghua-shortvideo-snapshot-v1",
+  "snapshot_id": "synthetic-tsinghua-adapter-fixture-v1",
+  "upstream_commit": "0000000000000000000000000000000000000000"
+}

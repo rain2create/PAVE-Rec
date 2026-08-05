@@ -1445,7 +1445,9 @@ release 的 `created` 和 `reused` result 返回相同计数。
 P2-03 的 publish contract 在本 Gate 固定为以下 mechanics：
 
 ```text
-root-local staging/<data_version>/<execution_id>/
+root-local staging/<data_version>/<execution_id>/；Windows physical staging 可将
+`(root_id, data_version, execution_id)` 映射为一个 opaque 128-bit SHA-256 prefix token，以避免 legacy
+path-length failure；该 operational 映射不改变 published keys/data identity
 → canonical artifacts and root manifest
 → full verification
 → no-overwrite atomic rename to bundles/<data_version>/

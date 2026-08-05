@@ -124,3 +124,72 @@ Phase 1 config and `run_from_config()` remain unchanged; a real runtime
 experiment-config selector is deferred until a later phase actually consumes real
 Stores. A raw media ref may keep its upstream version—the no-mixing rule applies to
 the processed release snapshot, not every resource-version string.
+
+## Phase 3 lifecycle configs and runtime pinning
+
+P3-07 keeps the Phase 1 and Phase 2 config models/loaders unchanged. Phase 3 adds
+separate strict/frozen config kinds under `configs/phase3/` for derived sequences,
+item semantics, SASRec training, Memory snapshots/audit, runtime, and evaluation. They use
+the same deterministic single-parent inheritance semantics, but foreign/unknown
+fields fail and training/build/runtime/metric parameters do not share one giant
+schema.
+
+Implementation status (2026-08-04): all committed Phase 3 lifecycle models,
+APIs, and CLI routes are implemented and locally accepted. This includes the
+Tsinghua adapter, derived sequences, pinned BGE-M3 semantics, SASRec training,
+Dynamic Memory, Memory audit, full-catalog evaluation, zero-budget runtime, and
+saved-output replay. Remote required CI on the candidate commit is still pending,
+so Phase 3 is not yet marked `Completed`.
+
+Each lifecycle declares only the roots it needs and reuses the typed root-registry
+path/access rules. Machine-local child configs may bind portable root IDs to external
+absolute directories; physical paths are operational and excluded from portable
+artifact identity. A Phase 3 runtime record stores root IDs/access roles plus exact
+checksummed refs for the P2 release, P3 derived dataset, item-semantic artifact,
+SASRec checkpoint, Memory snapshot, and `AgentInputBundle`. It never discovers
+`latest`, scans output directories, interpolates environment variables, or persists
+absolute root/model-cache paths, credentials, or tokens in the Agent run artifacts.
+
+The bundle carries one `p3-positive-item-history-v1` projection: the complete,
+untruncated `positive_v1` item sequence before the exact cutoff. The full-exposure
+cutoff remains a separate identity. Bootstrap binds the exact Memory snapshot and
+validates both identities before producing the existing `AgentRunRequest`; Memory
+does not discover a snapshot from the tuple, and SASRec alone applies OOV filtering
+and recent-50 internally.
+
+The first real runtime selector set is `artifact` User Memory, `sasrec` Initial
+Ranker, persistent filesystem Stores, the existing State/Stop/Trace components, and
+role-specific unavailable guards for Phase 4/5 components. Unavailable guards require
+`max_perception_actions=0`; they fail if accidentally called. The fixed zero-budget
+smoke therefore builds a real Recommendation State and stops `budget_exhausted`
+before Information Need.
+
+The shared Python lifecycle APIs are exposed through one thin command family:
+
+```text
+python -m pave_rec.cli.phase3 derive       --config configs/phase3/derived.yaml
+python -m pave_rec.cli.phase3 semantics    --config configs/phase3/semantic.yaml
+python -m pave_rec.cli.phase3 train-ranker --config configs/phase3/sasrec_train.yaml
+python -m pave_rec.cli.phase3 memory       --config configs/phase3/memory.yaml
+python -m pave_rec.cli.phase3 memory-audit --config configs/phase3/memory_audit.yaml
+python -m pave_rec.cli.phase3 evaluate     --config configs/phase3/evaluate_sasrec_test.yaml
+python -m pave_rec.cli.phase3 run          --config configs/phase3/runtime_zero_budget.yaml
+python -m pave_rec.cli.phase3 replay       --run-dir <exact-run-directory>
+```
+
+The CLI contains no lifecycle/business logic and does not provide semantic
+`key=value`, root, component, force, resume, or latest overrides. P3-08 fixes the
+evaluation kind to exact full-catalog warm-target ranking with primary `NDCG@10`,
+secondary `HR@10`, `NDCG@20`, `HR@20`, `MRR@10`, and `Recall@100`, plus separate
+all-target warm/cold coverage. The config pins the derived split/subsets, ranker or
+checkpoint, candidate/filter/metric recipes, K values, and seed; it cannot switch to
+development sampled candidates while claiming a primary result.
+
+Each evaluation publishes an immutable manifest, aggregate metrics, and per-target
+outcomes behind an exact ref. Per-target outcomes include the ordered Top-100 result
+used to audit the future Agent candidate handoff, but do not persist the full-catalog
+score matrix or expose target labels as online features. Multi-seed summaries pin the
+three per-seed evaluation refs; the first engineering run may use seed `20260804`
+without claiming a final stochastic result. Agent runs continue to contain exactly
+`resolved_config.json`, `trace.jsonl`, and `result.json`; large artifacts remain
+external behind their exact refs.

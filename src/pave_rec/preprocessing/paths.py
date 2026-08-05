@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -25,6 +26,27 @@ _WINDOWS_RESERVED = {
     *(f"COM{index}" for index in range(1, 10)),
     *(f"LPT{index}" for index in range(1, 10)),
 }
+
+
+def operational_filesystem_path(path: Path) -> Path:
+    """Return a path suitable for filesystem I/O without changing portable keys.
+
+    Python does not automatically opt into Windows extended-length paths when the
+    host has legacy ``MAX_PATH`` policy enabled.  Storage roots are absolute and
+    trusted at this boundary, so prefixing them once lets every descendant keep its
+    canonical, full-length artifact identity.
+    """
+
+    if os.name != "nt":
+        return path
+    raw = str(path)
+    if raw.startswith("\\\\?\\"):
+        return path
+    if not path.is_absolute():
+        raise ValueError("operational filesystem path must be absolute")
+    if raw.startswith("\\\\"):
+        return Path(f"\\\\?\\UNC\\{raw[2:]}")
+    return Path(f"\\\\?\\{raw}")
 
 
 def require_sha256(checksum: str | None, field_name: str = "checksum") -> str:
@@ -142,7 +164,7 @@ def build_root_registry(
         roots[root_id] = ResolvedStorageRoot(
             root_id=root_id,
             configured_path=configured_path,
-            path=resolved,
+            path=operational_filesystem_path(resolved),
             access=access,
         )
     entries = tuple(roots.values())

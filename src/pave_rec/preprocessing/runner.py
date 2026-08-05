@@ -26,7 +26,7 @@ from .models import (
     ExecutionRootRecord,
     PreprocessingResult,
 )
-from .publisher import FilesystemReleasePublisher
+from .publisher import FilesystemReleasePublisher, publication_staging_key
 from .source import LoadedSourceDataset, load_source_dataset
 
 
@@ -71,7 +71,11 @@ def _staging_locations(
     if version is None:
         return ()
     return tuple(
-        str(root.path / "staging" / version / execution_id)
+        str(
+            root.path.joinpath(
+                *publication_staging_key(root.root_id, version, execution_id).split("/")
+            )
+        )
         for root in sorted(
             (
                 loaded.root_registry.require(loaded.config.output.features_root_id),

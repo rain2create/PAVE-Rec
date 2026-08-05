@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path, PurePosixPath
+from typing import TypeAlias
 
 from pydantic import ValidationError
 
@@ -18,6 +20,12 @@ from pave_rec.domain import (
 )
 from pave_rec.domain.serialization import canonical_json_bytes
 from pave_rec.errors import ContractError
+from pave_rec.phase3.runtime_config import (
+    PHASE3_RUNTIME_DESCRIPTOR_VALUES,
+    Phase3RuntimeConfig,
+)
+
+ReplayConfig: TypeAlias = Phase1Config | Phase3RuntimeConfig
 
 
 def _read_required(path: Path) -> bytes:
@@ -116,7 +124,7 @@ def _validate_value_payload(current: RecommendationState, record: AgentStepTrace
 
 
 def _validate_stop_semantics(
-    config: Phase1Config,
+    config: ReplayConfig,
     current: RecommendationState | None,
     record: AgentStepTrace,
 ) -> None:
@@ -181,6 +189,56 @@ def _validate_stop_semantics(
             raise ContractError("low-value stop details differ from the selected value")
 
 
+def _load_resolved_config(resolved_bytes: bytes) -> ReplayConfig:
+    try:
+        payload = json.loads(resolved_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ContractError(f"invalid replay artifact schema: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ContractError("resolved_config.json must contain a JSON object")
+    kind = payload.get("kind")
+    model = Phase3RuntimeConfig if kind == "phase3-runtime" else Phase1Config
+    if kind not in {None, "phase3-runtime"}:
+        raise ContractError(f"unsupported replay config kind: {kind}")
+    try:
+        return model.model_validate(payload)
+    except ValidationError as exc:
+        raise ContractError(f"invalid replay artifact schema: {exc}") from exc
+
+
+def _validate_runtime_metadata(config: ReplayConfig, result: AgentRunResult) -> None:
+    if isinstance(config, Phase1Config):
+        _validate_relative_path(config.run.output_root, "output_root")
+        _validate_relative_path(config.input.fixture_path, "fixture_path")
+        expected_descriptors = EXPECTED_DESCRIPTOR_VALUES
+        return _validate_descriptors(result, expected_descriptors)
+
+    expected_metadata = {
+        "artifact_graph": config.artifacts.model_dump(mode="json", exclude_none=False),
+        "output_directory": str(PurePosixPath(config.run.output_root_id) / str(config.run.run_id)),
+        "runtime_kind": "phase3-runtime",
+    }
+    if result.metadata != expected_metadata:
+        raise ContractError("Phase 3 result metadata differs from resolved artifact graph")
+    _validate_descriptors(result, PHASE3_RUNTIME_DESCRIPTOR_VALUES)
+
+
+def _validate_descriptors(
+    result: AgentRunResult,
+    expected_values: dict[str, tuple[str, str]],
+) -> None:
+    roles = tuple(descriptor.role for descriptor in result.component_descriptors)
+    if roles != COMPONENT_ROLE_ORDER:
+        raise ContractError("component descriptors are not in fixed role order")
+    for descriptor in result.component_descriptors:
+        expected_implementation, expected_version = expected_values[descriptor.role]
+        if (descriptor.implementation, descriptor.version) != (
+            expected_implementation,
+            expected_version,
+        ):
+            raise ContractError(f"unexpected persisted descriptor for {descriptor.role}")
+
+
 def replay_run(run_dir: str | Path) -> AgentRunResult:
     """Validate all saved artifacts and return the already-recorded final result."""
 
@@ -188,8 +246,8 @@ def replay_run(run_dir: str | Path) -> AgentRunResult:
     resolved_bytes = _read_required(directory / "resolved_config.json")
     trace_bytes = _read_required(directory / "trace.jsonl")
     result_bytes = _read_required(directory / "result.json")
+    config = _load_resolved_config(resolved_bytes)
     try:
-        config = Phase1Config.model_validate_json(resolved_bytes)
         result = AgentRunResult.model_validate_json(result_bytes)
     except ValidationError as exc:
         raise ContractError(f"invalid replay artifact schema: {exc}") from exc
@@ -216,20 +274,9 @@ def replay_run(run_dir: str | Path) -> AgentRunResult:
     run_id = config.run.run_id
     if run_id is None or run_id != result.run_id or directory.name != run_id:
         raise ContractError("run directory, resolved config, and result run IDs differ")
-    _validate_relative_path(config.run.output_root, "output_root")
-    _validate_relative_path(config.input.fixture_path, "fixture_path")
     if result.seed != config.seed or result.data_version != config.data_version:
         raise ContractError("result reproducibility fields differ from resolved config")
-    roles = tuple(descriptor.role for descriptor in result.component_descriptors)
-    if roles != COMPONENT_ROLE_ORDER:
-        raise ContractError("component descriptors are not in fixed role order")
-    for descriptor in result.component_descriptors:
-        expected_implementation, expected_version = EXPECTED_DESCRIPTOR_VALUES[descriptor.role]
-        if (descriptor.implementation, descriptor.version) != (
-            expected_implementation,
-            expected_version,
-        ):
-            raise ContractError(f"unexpected persisted descriptor for {descriptor.role}")
+    _validate_runtime_metadata(config, result)
     if result.trace_record_count != len(records):
         raise ContractError("result trace_record_count differs from trace.jsonl")
 

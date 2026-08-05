@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from pave_rec.preprocessing.config import load_preprocessing_config
 from pave_rec.preprocessing.paths import (
     FilesystemPathResolver,
     build_root_registry,
+    operational_filesystem_path,
     require_sha256,
     validate_case_collisions,
     validate_filesystem_key,
@@ -143,6 +145,16 @@ def test_filesystem_key_and_root_id_accept_portable_values() -> None:
         validate_root_id("Processed")
     with pytest.raises(ValueError):
         require_sha256("SHA256:bad")
+
+
+def test_operational_filesystem_path_is_absolute_and_idempotent(tmp_path: Path) -> None:
+    resolved = tmp_path.resolve()
+    operational = operational_filesystem_path(resolved)
+    assert operational_filesystem_path(operational) == operational
+    if os.name == "nt":
+        assert str(operational).startswith("\\\\?\\")
+    else:
+        assert operational == resolved
 
 
 def test_case_collision_validation() -> None:

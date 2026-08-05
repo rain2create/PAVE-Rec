@@ -11,6 +11,11 @@ Current files:
 - `phase_2_discussion.md`: ordered Phase 2 data and Store decision checklist.
 - `phase_3_discussion.md`: ordered real Cheap Path, User Memory, and SASRec
   decision checklist.
+- `benchmark_construction_proposal.md`: non-normative cross-phase proposal for
+  sequential, Segment Value, auxiliary, and cross-dataset benchmarks.
+- `initial_ranker_experiment_plan.md`: companion plan for the pluggable Initial
+  Ranker boundary, dataset-specific SASRec training, later BERT4Rec/GRU4Rec
+  experiments, and Segment Value compatibility.
 
 When a later phase is about to begin, create a dedicated
 `phase_<n>_discussion.md` before implementing that phase. Do not create detailed

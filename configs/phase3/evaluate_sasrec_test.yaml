@@ -1,0 +1,32 @@
+schema_version: "1"
+kind: phase3-evaluation
+
+storage:
+  roots:
+    derived:
+      path: data/derived
+      access: read_only
+    checkpoints:
+      path: artifacts/checkpoints
+      access: read_only
+    evaluations:
+      path: artifacts/evaluations
+      access: write_new
+
+derived_artifact_ref:
+  store: derived
+  key: bundles/p3derived-0965ee788706f1f190728cfeaa1f7fbaa6747941997ef068a49d9950b61083b2/derived_dataset_manifest.json
+  version: p3derived-0965ee788706f1f190728cfeaa1f7fbaa6747941997ef068a49d9950b61083b2
+  checksum: sha256:8963a04e151162ada68c874095bf4f99d7b859c9ec3bd422b0cfcf47e81dd3f0
+
+method: sasrec-pytorch-v1
+checkpoint_ref:
+  store: checkpoints
+  key: bundles/p3ckpt-ba0ad86774b3c6b7b601d61258ce60b1c06c1ca15d89a32e2e0169e7f3eec5d7/checkpoint_manifest.json
+  version: p3ckpt-ba0ad86774b3c6b7b601d61258ce60b1c06c1ca15d89a32e2e0169e7f3eec5d7
+  checksum: sha256:83ad9a644dca1a48354d78e728a991af1252f18b8158d7088817ae142572820e
+split: test
+output_root_id: evaluations
+device: cuda:0
+candidate_chunk_size: 4096
+user_batch_size: 128

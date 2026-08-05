@@ -1,0 +1,46 @@
+extends: base.yaml
+
+source:
+  manifest_ref:
+    store: source_output
+    key: snapshots/tsvsrc-085bcd0815bf1a71d0487202752495d961809d9d64e2cc55863d2b29b945903d/source_manifest.json
+    version: tsvsrc-085bcd0815bf1a71d0487202752495d961809d9d64e2cc55863d2b29b945903d
+    checksum: sha256:fb97d5eea7eaf745cd4f9e47b50ab327d9fa67d8b482581af74cda5d24aec93b
+
+storage:
+  roots:
+    source_output:
+      path: data/interim
+      access: read_only
+    processed:
+      path: data/processed
+      access: write_new
+    features:
+      path: artifacts/features
+      access: write_new
+
+features:
+  item_attributes:
+    - source_key: category_paths_cn
+      output_key: category_paths_cn
+      value_type: string_list
+      required: true
+    - source_key: category_paths_en
+      output_key: category_paths_en
+      value_type: string_list
+      required: false
+    - source_key: tags
+      output_key: tags
+      value_type: string_list
+      required: true
+    - source_key: title_cn
+      output_key: title_cn
+      value_type: string
+      required: false
+  segment_attributes: []
+
+limits:
+  max_items: 40000
+  max_behavior_events: 150000
+  max_total_segments: 1
+  max_segments_per_item: 1

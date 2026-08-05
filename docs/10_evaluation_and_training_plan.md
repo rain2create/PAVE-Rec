@@ -93,14 +93,34 @@ TBD
 
 ## 3. Recommendation Metrics
 
-根据 dataset/task 支持：
+Phase 3 single-positive next-item protocol 固定为 full-catalog warm-target ranking。若 target 的
+1-based rank 为 `r`：
 
 ```text
-HR@K
-NDCG@K
-MRR
-Recall@K
+HR@K     = 1[r <= K]
+NDCG@K   = 1[r <= K] / log2(r + 1)
+MRR@10   = 1[r <= 10] / r
+Recall@K = HR@K                 # one relevant target per case
 ```
+
+Primary metric 是 `NDCG@10`；secondary metrics 是 `HR@10`、`NDCG@20`、
+`HR@20`、`MRR@10` 和 `Recall@100`，按 user macro mean 聚合。Warm targets 使用完整
+train vocabulary、seen-positive filtering 和 repeated-target exception；cold targets 不注入
+scorer，单独进入 all-target retrieval coverage/counts。
+
+```text
+full catalog
+    → Initial Ranker
+    → ordered Top-100 items
+    → later Agent candidate pool
+    → Phase 4/5 selects a smaller expensive Top-L item/segment space
+```
+
+`Recall@100` 衡量 target 是否进入后续 Agent pool，不表示 MLLM 感知全部 100 个 items。
+Development-only `1 positive + 100 negatives = 101 candidates` 只用于 smoke/CI，不是该
+Top-100 handoff，也不进入 research table。MostPop 与 SASRec 是 Phase 3 minimum real-data
+comparators；第一条真实 pipeline 使用 seed `20260804`，正式 stochastic result 至少使用
+`20260804/05/06` 三 seed 报告 `mean ± sample standard deviation`。
 
 ---
 
@@ -174,21 +194,27 @@ full-video perception
 
 ## 7. Memory Evaluation
 
-Potential measures：
+Phase 3 使用 exact synthetic golden transitions 验证：
 
 ```text
-next-item recommendation
-interest classification agreement
-emerging-interest detection
-fading-interest detection
-profile freshness
+stable reinforcement
+unseen short → emerging
+repeated emerging → promotion
+fading / inactive / reactivation
+empty long/short and drift boundaries
+same-time / repeat / idempotency
+cutoff leakage prevention
+persistence/reload and public-view ref integrity
 ```
 
-具体 memory benchmark 当前：
+真实 Tsinghua snapshot build 只报告 aggregate diagnostics：semantic/Memory coverage、
+long-empty、stable/emerging/fading、promotion/inactive、atom counts、cosine 和 drift
+distributions。当前没有人工 Memory-state ground truth，因此这些 audit 不设效果通过阈值，也不能
+用 fixture pass 宣称 Memory 已提高 recommendation quality。
 
-```text
-TBD
-```
+在 `perception budget=0` 时没有 active-path component 消费 Memory；同 checkpoint/candidates
+下，加载 Dynamic Memory 前后的 SASRec ranks 必须一致。Memory 的 next-item gain、interest
+classification agreement、emerging/fading detection 和 profile freshness benchmark 留到 Phase 6。
 
 ---
 
@@ -229,22 +255,66 @@ y-axis: recommendation metric
 每个实验保存：
 
 ```text
-config
-seed
-model versions
-checkpoint IDs
-dataset split
-budget
-ranking metrics
-perception cost metrics
-agent traces
+exact config and seed(s)
+dataset/split/subset refs
+model/checkpoint/memory identities
+candidate/filter/metric recipes
+warm/cold counts and ranking metrics
+per-target rank/miss and ordered Top-100 outcome
+budget and perception-cost metrics
+agent/evaluation artifact refs
+environment and code provenance
 ```
+
+Phase 3 每个 checkpoint/baseline evaluation 发布独立 immutable artifact：
+
+```text
+evaluation_manifest.json
+aggregate_metrics.json
+per_target_outcomes.jsonl
+```
+
+它不保存 full-catalog score matrix，不把 target label 暴露为 online feature，也不改变 Agent
+run 只能包含 `resolved_config.json`、`trace.jsonl` 和 `result.json` 的约定。
+
+### 10.1 First exact Tsinghua test results (2026-08-04)
+
+以下是 Phase 3 engineering acceptance 的单 seed 真实结果，不是三 seed paper table，也不用于证明
+SASRec 必须超过 MostPop。两者使用同一 P3-02 test subset、train-only vocabulary、seen-positive mask
+和 v2 batched full-catalog evaluator；all/warm/cold target 数分别为 `4298/3692/606`，all-target
+retrieval coverage 为 `0.8590041880`。
+
+| Method | NDCG@10 | HR@10 | NDCG@20 | HR@20 | MRR@10 | Recall@100 |
+|---|---:|---:|---:|---:|---:|---:|
+| MostPop | 0.001939 | 0.005146 | 0.003578 | 0.011647 | 0.001028 | 0.054713 |
+| SASRec (seed 20260804) | 0.006081 | 0.013814 | 0.008233 | 0.022481 | 0.003784 | 0.072589 |
+
+精确 evaluation refs：
+
+- MostPop: `p3eval-efbbf0f3d92ebc8d1bb4d2833c52ffe8b36ee513fc95bd7019e832cd126af026`
+  (`sha256:de7ac9bd409dc167301d7e9438eb99213ee313b857d0aa043acfce7caed2d726`)
+- SASRec: `p3eval-a4b12056384ffb424d2f4ecb7c7a0d4eba7a3071379bab988850e50b3fa7f335`
+  (`sha256:fcd6a7d91ab4780ab7922cdcd0d4f810280b53b85c15a52fe2716318be6bca58`)
+
+Execution identity 显式记录 evaluator version、device、candidate chunk size 和 user batch size；不同
+batch recipe 的 artifact 不会静默复用为同一结果。
 
 ---
 
-## 11. TBD
+## 11. Phase 3 Acceptance Boundary
 
-- exact target dataset
+Phase 3 engineering completion 需要 single-seed exact Tsinghua derive/semantics/SASRec/Memory/
+evaluation lifecycle、MostPop comparator、zero-budget real Agent run/replay、package branch coverage
+至少 90%、Ruff、既有三平台 core CI 和一个 required Ubuntu Python 3.12 CPU-PyTorch job。
+
+Phase 3 completion 不要求 SASRec 超过 MostPop，也不要求三 seed paper table、真实 Information
+Need、Segment Value、MLLM、MicroLens、BERT4Rec 或 cold-start recovery。真实 dataset/model/GPU
+不进入普通 CI；tests offline/CPU-only，只写 pytest temporary roots。
+
+---
+
+## 12. TBD
+
 - exact ground-truth definition
 - exact value-model label
 - exact oracle construction

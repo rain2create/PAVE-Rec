@@ -485,11 +485,20 @@ User Memory 与 SASRec 仍然独立，在 Recommendation State 层汇合。
 - Agent Controller 无需修改即可从 Mock 切换到真实 Cheap Path
 - 初始 ranking 可在 perception budget 为零时独立运行和评估
 
-### 当前状态 — `In Discussion`
+### 当前状态 — `Local Implementation Complete / Remote CI Pending`
 
-P1/P2 handoff、目标数据集、derived sequence dataset、SASRec、checkpoint/score
-semantics、Preference Atom、Dynamic Memory、runtime integration 和 Phase 3
-Definition of Done 正按 `todo/phase_3_discussion.md` 逐项确认；尚未授权主体实现。
+P3-00—P3-08 已全部 Confirmed，已锁定 P1/P2 handoff、目标数据集、derived sequence
+dataset、SASRec、checkpoint/score、Preference Atom、Dynamic Memory、runtime integration、
+evaluation/test matrix 和 Phase 3 Definition of Done。P3-XG-01 已逐项验证 Controller/public
+schemas、P2 data plane、cutoff/leakage、version、candidate/score、Memory/ranker、runtime 和 CI
+边界一致。P3-01 Tsinghua adapter、P3-02 derived artifact、P3-03/04 SASRec training/checkpoint adapter、
+P3-05 item semantics、P3-06 Dynamic Memory/audit、P3-07 runtime/replay 和 P3-08 MostPop/SASRec
+full-catalog evaluation 均已实现并产生 exact real artifacts。首条 101-candidate zero-budget Agent run 已成功
+停止为 `budget_exhausted` 并通过保存输出回放；Windows long-path 回归已关闭。
+
+当前本地验收为 `275 passed, 2 skipped`、branch coverage `90.03%`、Ruff clean。状态仍不是
+`Completed`，唯一剩余 engineering gate 是把同一 candidate commit 提交到远端 required CI 并全部通过；
+该动作需要后续 commit/push/PR 工作流，不能用本地结果代替。
 
 ---
 

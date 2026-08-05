@@ -1,0 +1,56 @@
+schema_version: "1"
+kind: phase3-item-semantics
+
+storage:
+  roots:
+    processed:
+      path: data/processed
+      access: read_only
+    features:
+      path: artifacts/features
+      access: read_only
+    source_output:
+      path: data/interim
+      access: read_only
+    model_cache:
+      path: artifacts/model-cache
+      access: read_only
+    model_manifests:
+      path: artifacts/model-manifests
+      access: read_only
+    semantics:
+      path: artifacts/semantics
+      access: write_new
+
+source_release_ref:
+  store: processed
+  key: releases/p2-eb8680c692ae42a2dadbd8ac2f6cbaccfdf390581b974893072eb5d10d0fd1d2.json
+  version: p2-eb8680c692ae42a2dadbd8ac2f6cbaccfdf390581b974893072eb5d10d0fd1d2
+  checksum: sha256:2f3ca5d53c81b9cec08067bd852e9a523499e8ce2e53df89385cbceadd1e2ada
+
+output_root_id: semantics
+semantic_text_recipe: tsv-item-semantic-text-v1
+
+provider:
+  recipe: bge-m3-dense-v1
+  model_id: BAAI/bge-m3
+  revision: 5617a9f61b028005a4858fdac845db406aefb181
+  provider_package: FlagEmbedding
+  provider_version: 1.4.0
+  pooling: official-dense-cls
+  instruction: null
+  max_tokens: 1024
+  dimension: 1024
+  dtype: float32
+  normalization: l2-unit-v1
+  model_root_id: model_cache
+  model_directory_key: models--BAAI--bge-m3/snapshots/5617a9f61b028005a4858fdac845db406aefb181
+  snapshot_manifest_ref:
+    store: model_manifests
+    key: bge-m3-5617a9f61b028005a4858fdac845db406aefb181-snapshot.json
+    version: 5617a9f61b028005a4858fdac845db406aefb181
+    checksum: sha256:c5daa602d8913af03ed18d4e5117a00191dfb86043d5bf889866873293287f7c
+
+operational:
+  device: cuda:0
+  batch_size: 32

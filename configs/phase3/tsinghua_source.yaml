@@ -1,0 +1,29 @@
+schema_version: "1"
+kind: tsinghua-source-adapter
+
+storage:
+  roots:
+    tsinghua_raw:
+      path: data/raw/tsinghua_shortvideo/official_2026-01-29
+      access: read_only
+    source_output:
+      path: data/interim
+      access: write_new
+
+source_root_id: tsinghua_raw
+output_root_id: source_output
+
+snapshot:
+  schema_version: tsinghua-shortvideo-snapshot-v1
+  snapshot_id: tsinghua-shortvideo-sampled-20260129-snapshot-v1
+  upstream_commit: 6bd97f13a620f429745b24a17897457a75054052
+  artifacts:
+    - relative_path: README.md
+      size_bytes: 5382
+      checksum: sha256:89d133788031f991ed4112bfb8fb5416514fd992e0418eccc8a9003dad4b91a7
+    - relative_path: categories_cn_en.csv
+      size_bytes: 31506
+      checksum: sha256:39fcfbf0d42873facd25cbca3996e9e5d44a287d02c5530145bcf0ccd5d7d922
+    - relative_path: interaction_sampled.csv
+      size_bytes: 159920078
+      checksum: sha256:96cadb70829e853b8d7797bc566928eceeb670f19a8a0b92dbfa58b32372bf87

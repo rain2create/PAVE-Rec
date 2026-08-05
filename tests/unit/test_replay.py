@@ -6,9 +6,12 @@ from pathlib import Path
 
 import pytest
 
+from pave_rec.agent import replay as replay_module
 from pave_rec.agent.replay import replay_run
+from pave_rec.domain import AgentStepTrace
 from pave_rec.domain.serialization import canonical_json_bytes
 from pave_rec.errors import ContractError
+from pave_rec.phase3.runtime_config import PHASE3_RUNTIME_DESCRIPTOR_VALUES
 from pave_rec.runner import GitMetadata, run_from_config
 
 
@@ -46,6 +49,73 @@ def _write_json(path: Path, payload: dict) -> None:
     path.write_bytes(canonical_json_bytes(payload, pretty=True))
 
 
+def _phase3_ref(marker: str) -> dict[str, str]:
+    return {
+        "store": "artifacts",
+        "key": f"refs/{marker}.json",
+        "version": f"version-{marker}",
+        "checksum": f"sha256:{marker * 64}",
+    }
+
+
+def _convert_zero_budget_run_to_phase3(run_dir: Path) -> None:
+    run_id = run_dir.name
+    data_version = f"p2-{'a' * 64}"
+    artifacts = {
+        "p2_release_ref": _phase3_ref("1"),
+        "derived_dataset_ref": _phase3_ref("2"),
+        "item_semantics_ref": _phase3_ref("3"),
+        "sasrec_checkpoint_ref": _phase3_ref("4"),
+        "memory_snapshot_ref": _phase3_ref("5"),
+        "agent_input_bundle_ref": _phase3_ref("6"),
+    }
+    resolved = {
+        "schema_version": "1",
+        "kind": "phase3-runtime",
+        "seed": 7,
+        "data_version": data_version,
+        "device": "cpu",
+        "storage": {
+            "roots": {
+                "artifacts": {"path": "artifacts", "access": "read_only"},
+                "runs": {"path": "runs", "access": "write_new"},
+            }
+        },
+        "run": {"output_root_id": "runs", "run_id": run_id},
+        "agent": {"max_perception_actions": 0},
+        "stop": {"ranking_margin_threshold": None, "min_segment_value": None},
+        "components": {
+            "user_memory": "artifact",
+            "initial_ranker": "sasrec",
+            "item_feature_store": "persistent",
+            "segment_store": "persistent",
+            "state_builder": "default",
+            "information_need": "unavailable",
+            "segment_value": "unavailable",
+            "perceiver": "unavailable",
+            "evidence_updater": "unavailable",
+            "observation_updater": "unavailable",
+            "score_updater": "unavailable",
+            "stop_policy": "threshold",
+            "trace_writer": "jsonl",
+        },
+        "artifacts": artifacts,
+    }
+    _write_json(run_dir / "resolved_config.json", resolved)
+    result = _read_json(run_dir / "result.json")
+    result["data_version"] = data_version
+    for descriptor in result["component_descriptors"]:
+        implementation, version = PHASE3_RUNTIME_DESCRIPTOR_VALUES[descriptor["role"]]
+        descriptor["implementation"] = implementation
+        descriptor["version"] = version
+    result["metadata"] = {
+        "artifact_graph": artifacts,
+        "output_directory": f"runs/{run_id}",
+        "runtime_kind": "phase3-runtime",
+    }
+    _write_json(run_dir / "result.json", result)
+
+
 def test_replay_rejects_missing_and_noncanonical_artifacts(
     completed_run: Path, tmp_path: Path
 ) -> None:
@@ -60,6 +130,36 @@ def test_replay_rejects_missing_and_noncanonical_artifacts(
     result_path.write_bytes(result_path.read_bytes() + b"\n")
     with pytest.raises(ContractError, match="canonical"):
         replay_run(copied)
+
+
+def test_replay_dispatches_phase3_runtime_and_binds_artifact_graph(
+    synthetic_project: Path,
+) -> None:
+    config = synthetic_project / "configs/phase3-replay.yaml"
+    config.write_text(
+        "extends: mock.yaml\nagent:\n  max_perception_actions: 0\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    run_id = "20260804T150000Z-1234abcd"
+    result = run_from_config(
+        config,
+        run_id=run_id,
+        git_metadata=GitMetadata(None, None),
+    )
+    assert result.stop_decision.reason.value == "budget_exhausted"
+    run_dir = synthetic_project / "runs" / run_id
+    _convert_zero_budget_run_to_phase3(run_dir)
+
+    replayed = replay_run(run_dir)
+    assert replayed.run_id == run_id
+    assert replayed.metadata["runtime_kind"] == "phase3-runtime"
+
+    result_payload = _read_json(run_dir / "result.json")
+    result_payload["metadata"]["artifact_graph"]["memory_snapshot_ref"] = _phase3_ref("7")
+    _write_json(run_dir / "result.json", result_payload)
+    with pytest.raises(ContractError, match="artifact graph"):
+        replay_run(run_dir)
 
 
 def test_replay_rejects_wrong_selection(completed_run: Path, tmp_path: Path) -> None:
@@ -401,3 +501,126 @@ def test_replay_rejects_descriptor_and_terminal_detail_mismatch(
     _write_json(result_path, result)
     with pytest.raises(ContractError, match="details"):
         replay_run(copied)
+
+
+def test_replay_config_and_relative_path_helpers_fail_closed() -> None:
+    for payload, pattern in (
+        (b"not-json", "invalid replay artifact schema"),
+        (b"[]", "must contain a JSON object"),
+        (b'{"kind":"future-runtime"}', "unsupported replay config kind"),
+        (b"{}", "invalid replay artifact schema"),
+    ):
+        with pytest.raises(ContractError, match=pattern):
+            replay_module._load_resolved_config(payload)
+    replay_module._validate_relative_path("runs/one", "path")
+    for value in ("", ".", "../escape", "/absolute"):
+        with pytest.raises(ContractError, match="project-relative"):
+            replay_module._validate_relative_path(value, "path")
+
+
+def test_replay_transition_and_segment_value_helpers_reject_drift(
+    completed_run: Path,
+) -> None:
+    records = tuple(
+        AgentStepTrace.model_validate_json(canonical_json_bytes(payload, pretty=False))
+        for payload in _read_trace(completed_run)
+    )
+    record = records[0]
+    before = record.state_before
+    after = record.state_after
+    assert before is not None and after is not None and record.perception_result is not None
+
+    with pytest.raises(ContractError, match="missing candidate"):
+        replay_module._candidate(before, "missing")
+    changed_coverage = record.model_copy(
+        update={"state_after": after.model_copy(update={"candidates": after.candidates[:-1]})}
+    )
+    with pytest.raises(ContractError, match="candidate coverage"):
+        replay_module._validate_transition(before, changed_coverage)
+    with pytest.raises(ContractError, match="requires a PerceptionResult"):
+        replay_module._validate_transition(
+            before,
+            record.model_copy(update={"perception_result": None}),
+        )
+    missing_observation = record.model_copy(
+        update={
+            "perception_result": record.perception_result.model_copy(
+                update={"segment_id": "missing"}
+            )
+        }
+    )
+    with pytest.raises(ContractError, match="does not match PerceptionResult"):
+        replay_module._validate_transition(before, missing_observation)
+
+    result = record.perception_result
+    candidate = next(entry for entry in after.candidates if entry.item_id == result.item_id)
+    observations = tuple(
+        observation.model_copy(update={"last_attempt_step": 99})
+        if observation.segment_id == result.segment_id
+        else observation
+        for observation in candidate.segment_observations
+    )
+    changed_candidate = candidate.model_copy(update={"segment_observations": observations})
+    changed_after = after.model_copy(
+        update={
+            "candidates": tuple(
+                changed_candidate if entry.item_id == candidate.item_id else entry
+                for entry in after.candidates
+            )
+        }
+    )
+    with pytest.raises(ContractError, match="last_attempt_step"):
+        replay_module._validate_transition(
+            before,
+            record.model_copy(update={"state_after": changed_after}),
+        )
+    no_evidence_result = result.model_copy(update={"evidence": None})
+    with pytest.raises(ContractError, match="did not publish its Evidence"):
+        replay_module._validate_transition(
+            before,
+            record.model_copy(update={"perception_result": no_evidence_result}),
+        )
+    empty_evidence = candidate.evidence.model_copy(update={"evidence": ()})
+    changed_candidate = candidate.model_copy(update={"evidence": empty_evidence})
+    changed_after = after.model_copy(
+        update={
+            "candidates": tuple(
+                changed_candidate if entry.item_id == candidate.item_id else entry
+                for entry in after.candidates
+            )
+        }
+    )
+    with pytest.raises(ContractError, match="absent from post-state"):
+        replay_module._validate_transition(
+            before,
+            record.model_copy(update={"state_after": changed_after}),
+        )
+
+    with pytest.raises(ContractError, match="coverage/order"):
+        replay_module._validate_value_payload(
+            before,
+            record.model_copy(update={"segment_values": record.segment_values[:-1]}),
+        )
+    observed_state = before.model_copy(
+        update={
+            "candidates": tuple(
+                candidate.model_copy(update={"unobserved_segment_ids": ()})
+                for candidate in before.candidates
+            )
+        }
+    )
+    with pytest.raises(ContractError, match="cannot be empty"):
+        replay_module._validate_value_payload(
+            observed_state,
+            record.model_copy(update={"segment_values": ()}),
+        )
+    with pytest.raises(ContractError, match="deterministic argmax"):
+        replay_module._validate_value_payload(
+            before,
+            record.model_copy(update={"selected_segment_value": record.segment_values[0]}),
+        )
+    with pytest.raises(ContractError, match="requires selected SegmentMeta"):
+        replay_module._validate_value_payload(
+            before,
+            record.model_copy(update={"selected_segment": None}),
+        )

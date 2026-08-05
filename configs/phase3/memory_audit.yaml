@@ -1,0 +1,19 @@
+schema_version: "1"
+kind: phase3-memory-audit
+
+storage:
+  roots:
+    memory:
+      path: artifacts/memory
+      access: read_only
+    memory_audits:
+      path: artifacts/memory-audits
+      access: write_new
+
+memory_artifact_ref:
+  store: memory
+  key: bundles/p3memoryartifact-0c2370bf509742115e03b101e3224c766e6c454e6af6bba8ca24f7d2ce34d3e7/manifest.json
+  version: p3memoryartifact-0c2370bf509742115e03b101e3224c766e6c454e6af6bba8ca24f7d2ce34d3e7
+  checksum: sha256:c1bb6fdb86f4ac1fc5f147df0f765caf80743e56e3d3147daf832d7515316f97
+
+output_root_id: memory_audits
