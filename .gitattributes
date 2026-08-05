@@ -3,3 +3,5 @@
 *.yaml text eol=lf
 *.yml text eol=lf
 *.bin binary
+tests/fixtures/phase3/tsinghua/v1/README.md text eol=lf
+tests/fixtures/phase3/tsinghua/v1/*.csv text eol=lf
