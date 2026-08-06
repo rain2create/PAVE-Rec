@@ -524,12 +524,16 @@ readiness、第一条 rule-based Information Need、真实候选可用的非学�
 - exact base-release-bound derived media overlay and `MediaSubsetSegmentStore`
 - `scene-hybrid-v1` shot detection、semantic merge/split/cap and sparse anchor-frame recipe
 - frame/clip input resolver
-- selected-segment 8-frame deep encoding recipe；不改变 P4-01 segmentation/anchor contract
-- latent Evidence artifact、embedding ref、checksum 和 failure contract
+- P4 proxy baseline 使用 25%/50%/75% 最多三帧；低清多帧与其他密集采样留作 versioned P6 experiment
+- selected-segment eight-bin-center deep encoding recipe，保留 2—8 个真实有效 frame tokens 和 mask；不改变
+  P4-01 segmentation/anchor contract
+- per-segment latent bundle（manifest + FP32 `[F,512]` NPY）、`Evidence.embedding_ref`、checksum closure、
+  atomic publication 和 typed failure contract
 - balanced Observation State sampler，包含 No-Evidence/target/non-target/multi-item/shuffled states
 - Small Candidate-aware Multimodal Reranker as the existing `ScoreUpdater`
 - no-evidence consistency、mask invariance 和 permutation-consistency checks
-- Evidence State aggregation
+- Evidence State 保留 action-ordered per-segment refs；P4-06 不池化，frame/multi-segment aggregation 由
+  Small Reranker 负责，`evidence_embedding_ref=null`
 - perception cost logging
 - Mock Score Updater 的一致性基线
 - fixed-base-score + full-current-Evidence pure recomputation，禁止递归累计 previous scores
@@ -554,6 +558,7 @@ readiness、第一条 rule-based Information Need、真实候选可用的非学�
 - encoding/ref failure 有明确状态，不会静默污染 ranking
 - 没有 Evidence 时输出接近 SASRec prior；未观察 item 仍参与候选集合级重排
 - 同一 Evidence 可以离线重放 score update
+- failed perception 不产生 Evidence、不调用 ScoreUpdater；saved replay 缺失/损坏 artifact 时 fail closed，不重跑 Encoder
 - latent/cost logging 不改变既有 Phase 1 State/Trace 语义
 
 ### 本阶段保留为可替换策略
@@ -632,6 +637,10 @@ Segment Value Model。
 - segment-selection baselines
 - Agent ablations
 - memory evaluation
+- Query-generation/Memory horizon ablations（recent window、decay half-life、active atoms、importance/state recipe）
+- proxy/deep frame extraction ablations（source resolution、sparse high-resolution vs dense low-resolution、
+  3/6/8/12/16 proxy frames、4/8/16/32 deep frames、positions、sampling、aggregation、encoder）
+- one-axis-at-a-time protocol、variant-specific artifact identities 和 final best-combination evaluation
 - value-model evaluation
 - experiment config snapshots
 - multi-seed aggregation

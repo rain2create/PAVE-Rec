@@ -109,6 +109,25 @@ select B.seg1
 
 `Segment Value Model` 必须跨 item 比较所有候选 segment，而不是先固定 item。
 
+### 4.1 Phase 4 confirmed pure Query-relevance baseline
+
+P4-04 不训练 expected-gain model，也不把 P4-03 已用于 Query 选择的 importance、candidate difference、
+evidence gap、rank weight 或 request uncertainty 再次加入 segment 排序。给定 P4-03 发布的 exact
+Chinese-CLIP query vector `q`，对每个 eligible unobserved segment 的 2/3 张 normalized proxy frame
+vectors 计算：
+
+```text
+c_k = dot(q, f_k)
+value(item, segment) = mean(top-2(c_1..c_m)),  m in {2, 3}
+```
+
+`SegmentValue.value` 就是该 raw cosine mean。在完整 Top-100 的全部 eligible segments 上取全局 argmax；
+相同 value 使用既有 Controller identity tie-break。P4 固定 `min_segment_value=null`，只记录 value 分布，
+rank/novelty/threshold/random comparators 留作 P6 selection ablation。P5 再以反事实 recommendation gain
+训练真正的 supervised Segment Value Model。
+P4-04 只继承当前 versioned three-frame proxy recipe；三帧数量和 25%/50%/75% 位置是 pipeline baseline，
+不是本模块锁定的最终研究选择，后续变体必须使用不同 artifact identity 做独立消融。
+
 ---
 
 ## 5. Feature Interface

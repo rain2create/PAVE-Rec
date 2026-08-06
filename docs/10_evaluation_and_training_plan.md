@@ -47,7 +47,7 @@ stable / emerging / fading update
 - Rule-based Information Need baseline
 - heuristic/relevance-based Segment Value baseline
 - frozen Deep Segment Encoder `SegmentPerceiver`
-- latent Evidence refs/aggregation
+- per-segment latent Evidence bundle/refs；P4-06 不池化，frame/multi-segment aggregation 由 Small Reranker 学习
 - balanced Observation State dataset
 - Small Candidate-aware Multimodal Reranker `ScoreUpdater`
 - No-Evidence capacity baseline、zero/shuffled/mask/permutation sanity checks
@@ -193,6 +193,38 @@ Small Reranker with No Evidence
 fixed-frame perception
 full-video perception
 ```
+
+### 6.1 Query-generation and frame-extraction ablations
+
+P4 的 Memory、candidate-aware Query、three-frame proxy 和 selected-segment deep-frame recipes 只定义第一条
+可复现 pipeline baseline。P6 必须把会改变 Query 的实验拆成两个主要轴：
+
+```text
+Query-generation / Memory axis
+- short recent window
+- long recency half-life
+- max active atoms and inactive threshold
+- persistence/importance/state-transition recipes
+- concept vocabulary, IDF/cap, template, encoder and calibration
+
+Frame/perception axis
+- proxy source decode resolution and sparse high-resolution vs dense low-resolution
+- proxy frame count (3/6/8/12/16) and relative positions
+- uniform / medoid / scene-aware sampling
+- invalid-frame replacement and aggregation
+- proxy encoder
+- selected-segment deep frame count (4/8/16/32), sampling and token aggregation
+```
+
+Proxy frame count 与 aggregation 必须联合版本化和评估：帧数增加时固定 top-2 会扩大 multiple-comparisons bias。
+如果所有 proxy 最终仍由 official processor resize 到 224×224，低清 source decode 主要节省解码、缓存和传输，
+不会降低每帧 image-tower FLOPs；因此同时报告 decode resolution、processed frames、FLOPs、latency 和命中率。
+Deep-frame 实验与 proxy 实验分开进行，避免把“是否选对 segment”和“选中后读取了多少内容”的收益混在一起。
+
+正式协议先固定 frame side 比较 Memory/Query variants，再固定 Memory side 比较 frame variants，最后才组合各自
+最佳候选。每个 variant 使用独立 config、recipe/version 和 artifact identity，并在既定 user/time split 后
+重建兼容的 Memory、Query、proxy 和 Evidence artifacts。报告 Query fallback/candidate-difference/gap/stability、
+segment-selection 分布、ranking gain、frames/FLOPs、latency 和存储成本，不能只看最终 NDCG。
 
 ---
 

@@ -265,6 +265,18 @@ Phase 1 的 `ObservationStatus` 是 `unobserved`、`succeeded` 或 `failed`。
 Evidence 只保存 JSON-compatible structured attributes；原始响应和 embedding
 使用 reference。
 
+P4-06 latent baseline 不改变上述公共 shape。每个成功观察的 segment 产生一个 `Evidence`：
+`embedding_ref` 指向 content-addressed latent bundle manifest，该 manifest 闭包绑定 finite FP32
+`frame_tokens[F,512]`（`2 <= F <= 8`）payload、mask/timestamps/checksums 和 exact encoder/preprocess/sampling
+identity。因为该分支不生成文本或校准概率，`text_summary`、`confidence`、`raw_output_ref` 均为 `None`。
+Acquisition Need/step 只进入 Evidence event metadata，不进入可跨用户/Query 复用的 content artifact。
+
+P4-06 不做 frame pooling 或同 item 多 segment 聚合：per-segment Evidence 按 action order 保留在
+`ItemEvidenceState.evidence`，`aggregated_attributes` 只保存紧凑 inventory，P4 baseline 的
+`evidence_embedding_ref` 保持 `None`；P4-07 Reranker 从各 `Evidence.embedding_ref` 加载 tokens 并负责聚合。
+只有 manifest/payload 原子发布并完成 checksum/schema/identity 校验后才允许 `succeeded`。任何 decode、encoder、
+artifact 或 cache failure 都必须为 `failed`、不携带 Evidence、也不触发 score update。
+
 运行时 Evidence 与 Observation 分开保存：`EvidenceState` 只负责有效证据，
 `ObservationState` 是 segment attempt/status 的唯一事实来源。
 `RecommendationStateBuilder` 从二者生成 candidate snapshot。

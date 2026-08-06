@@ -559,7 +559,9 @@ Selected Segment
 - 计算与存储成本更高；
 - 工程复杂度更高。
 
-建议：V1 可以先使用 CLIP Frame Embedding 跑通完整闭环，再替换或增加 Video Encoder 版本。
+P4-05 已确认：V1 使用 pinned `OFA-Sys/chinese-clip-vit-base-patch16` revision
+`36e679e65c2a2fead755ae21162091293ad37834` 的 frozen image tower 跑通完整闭环；原生 Video Encoder
+和其他视觉编码器作为后续 versioned experiment。
 
 ## 9.3 输入
 
@@ -571,15 +573,23 @@ SegmentEmbeddingInput = {
 }
 ```
 
-V1 可只使用 8 帧视觉输入。
+V1 对 selected segment 目标采样八帧视觉输入。
 
-这里的 8 帧是 **被 P4-01 的 `scene-hybrid-v1` 选中 segment 之后**，供冻结 Deep Segment Encoder 使用的段内均匀采样；它不改变 scene detection、最多 12 段、25/50/75 proxy candidates 和 medoid anchor 契约。MLLM 文本对比支线保留已确认的 native 3-frame 输入（anchor±2s 与 anchor；短片段退化为 25/50/75），公平对比另报 matched-frame 设置、实际 frames 和 FLOPs。
+这里的目标八帧是 **segment 被 P4-04 选中之后**，将该 segment 均分为八个时间 bin，并取各 bin 中心
+`6.25/18.75/31.25/43.75/56.25/68.75/81.25/93.75%`。经 deterministic nearest-PTS、去重和无效帧过滤后，
+保留 2—8 张真实有效帧及 mask，不复制补满；少于两张时 typed failure。每帧由 frozen Chinese-CLIP image
+tower 输出 FP32、L2-normalized 512-D token，artifact 主输出为有序 `[F,512]` frame tokens，不在本阶段提前池化。
+该 recipe 不改变 scene detection、最多 12 段、25/50/75 proxy baseline 和 medoid anchor 契约；proxy 的
+低清多帧/其他密集采样以及 Deep Encoder 的 4/8/16/32 帧均留作独立实验。MLLM 文本对比支线公平比较时另报
+matched-frame 设置、实际 frames 和 FLOPs。
 
 ## 9.4 输出
 
-允许两种输出形式。
+研究接口可以比较两种输出形式，但 P4/V1 已确认使用多个 ordered frame tokens，不提前池化。
 
 ### 单个 Segment Embedding
+
+该形式只作为后续 pooling baseline，不是 P4/V1 主线。
 
 ```python
 SegmentEmbeddingOutput = {
@@ -607,6 +617,19 @@ SegmentEmbeddingOutput = {
 - 保留局部视觉和时序信息；
 - 在 Reranker 内部进行 Cross-Attention；
 - 使用可选 Evidence Adapter。
+
+P4/V1 的 exact 输出是 finite FP32 `frame_tokens[F,512]`（`2 <= F <= 8`，row-wise L2 normalized）与
+八个目标 slot 的 valid mask，而不是上方示意的 pooled segment embedding。
+
+P4-06 将每个成功 segment 发布为 content-addressed latent bundle：canonical `manifest.json` 闭包绑定
+`frame_tokens.npy` payload、mask/timestamps/frame checksums、exact model/processor/sampling recipe 和 SHA-256。
+`Evidence.embedding_ref` 指向 manifest；`text_summary`、`confidence`、`raw_output_ref` 为空。公共 State/Trace
+不内嵌 token values、raw frames 或本机路径。
+
+P4-06 只按 action order 保存 per-segment Evidence，不做 frame pooling 或同 item 多 segment 聚合；
+`ItemEvidenceState.evidence_embedding_ref` 在 P4 baseline 保持 `None`。P4-07 从各 manifest 加载完整 tokens，
+负责 learned frame/segment aggregation。Bundle 必须原子发布并完成 manifest/payload checksum、schema 和 identity
+校验后才可返回成功；任何 partial/missing/corrupt/cache mismatch 都 fail closed，不产生 Evidence、不改变排名。
 
 ## 9.5 冻结策略
 
@@ -1559,7 +1582,7 @@ H. Full / Selected Segment MLLM + LLM Reranker  ← System-level semantic refere
 
 # 21. 推荐代码目录
 
-以下目录仅表示职责映射，不授权创建第二个 `project/` 根。实际实现必须落在现有 `src/pave_rec`、`configs`、`tests` 与既有 CLI 中：Deep Segment Encoder 实现 `SegmentPerceiver`，latent artifact 通过 `Evidence.embedding_ref`/`evidence_embedding_ref` 引用，Evidence Bank 使用 `EvidenceState`，observed mask 使用 `ObservationState`，Small Reranker 实现 `ScoreUpdater`，循环继续由 `AgentController` 驱动。
+以下目录仅表示职责映射，不授权创建第二个 `project/` 根。实际实现必须落在现有 `src/pave_rec`、`configs`、`tests` 与既有 CLI 中：Deep Segment Encoder 实现 `SegmentPerceiver`，per-segment latent bundle manifest 通过 `Evidence.embedding_ref` 引用；P4 的 `evidence_embedding_ref` 保持为空，由 P4-07 直接聚合各 Evidence tokens。Evidence Bank 使用 `EvidenceState`，observed mask 使用 `ObservationState`，Small Reranker 实现 `ScoreUpdater`，循环继续由 `AgentController` 驱动。
 
 ```text
 project/

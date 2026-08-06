@@ -148,6 +148,12 @@ fallback: 这段视频是否包含有助于区分当前候选的核心内容？
 `delta=min(250ms, 0.1*segment_duration)` 和 `0,-delta,+delta,-2delta,+2delta` 顺序在段内寻找替代帧；
 去重/过滤后少于两张有效帧的 segment 不参与。Image vectors 使用 official 224×224 processor，发布为 FP32、
 L2-normalized 512-D refs。
+该三帧 recipe 只用于跑通 P4 pipeline 和形成可复现 baseline，不声明为最终最优采样；帧数、相对位置以及
+medoid/uniform/更密采样必须作为后续独立消融，通过新 artifact recipe/version 切换。
+P6 同时比较 sparse high-resolution 与 dense low-resolution proxy：低清多帧可能以更低的解码、缓存和传输
+成本覆盖更多时刻，从而提高命中正确 segment 的概率。若仍送入 official 224×224 Chinese-CLIP processor，
+降低 source decode resolution 不会降低每帧 image-tower FLOPs，因此必须同时报告实际解码成本、总帧数和
+encoder FLOPs。不同帧数不能固定沿用同一个 top-2 聚合而不校准，避免候选帧越多带来的 multiple-comparisons bias。
 对 query `q`：
 
 ```text
@@ -275,7 +281,10 @@ Segment Value Model
 
 ## 7. Deferred Research
 
-- P4-04 如何把已选 Query 的 segment relevance 与 rank priority、novelty 和 min value 合成；
+- P4-04 已确认纯 selected-Query top-2-of-3 frame relevance global argmax；rank/novelty/min-threshold/random
+  comparators 留作 P6 selection ablation；
+- proxy source decode resolution、sparse high-resolution vs dense low-resolution、frame count、25%/50%/75%
+  positions、聚合方式和替代采样 recipe 的 P6 ablation；
 - per-query calibration、text-only candidate difference、不同 Top-K、不同 frame aggregation 和 query-free ablation；
 - learned/multi-need estimator；
 - synonym merge、learned concept vocabulary 和 title-derived needs；

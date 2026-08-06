@@ -243,7 +243,9 @@ Small Candidate-aware Multimodal Reranker
 Top-1-centric stop or repeat
 ```
 
-1. Deep Segment Encoder 实现既有 `SegmentPerceiver`；latent tensor 存外部 artifact，通过 `Evidence.embedding_ref`/aggregated evidence ref 进入既有 `EvidenceState`。
+1. Deep Segment Encoder 实现既有 `SegmentPerceiver`；latent tensor 存外部 artifact，P4-06 已确认每个 segment
+   通过 `Evidence.embedding_ref` 指向 bundle manifest 进入既有 `EvidenceState`，不在此处生成 aggregated ref；
+   frame/multi-segment aggregation 由 P4-07 Reranker 负责。
 2. Small Reranker 实现既有 `ScoreUpdater`，每轮输入全体 candidates，并从固定 SASRec base scores + 完整当前 EvidenceState 纯函数式重算；不得输入 previous current scores 形成重复累计。
 3. Dynamic Memory 不进入 SASRec 粗召回。它通过 Recommendation State 支撑 Information Need 和 Segment Value，并在 reranker 内部作为用户偏好条件直接影响最终排序；BGE semantic vectors 与 SASRec ID embeddings 分别投影后融合。
 4. P4 仍用 rule Need + heuristic Value 尽快跑通 loop；P5 先冻结 Encoder/Reranker，再以 `Δ log p(target) - λ cost` 构造 Segment Value labels。
@@ -417,8 +419,8 @@ media handoff architecture、P2 compatibility amendment、scene segmentation、s
 missing-media semantics、artifact/version/privacy boundary。
 Deferred follow-up:
 P4-02 已解决 candidate/search protocol；P4-03 已确认 exact semantic proxy encoder/frames 和 Need contract；
-P4-04 仍待 Segment Value 组合/threshold；P4-05 exact Deep Encoder/frame preprocessing；official-100 audit 后的
-parameter adjustment；P6 segmentation/proxy/calibration ablations and final scale。
+P4-04/P4-05 exact contracts 后续已分别由对应 Decision Record 解决；仍保留 official-100 audit 后的
+parameter adjustment，以及 P6 segmentation/proxy/calibration ablations and final scale。
 Confirmed by: User
 Date: 2026-08-05
 ```
@@ -634,9 +636,32 @@ P4-04 reuses the selected Query's segment relevance to choose one segment
   P4-04 使用该 exact query embedding 与既有 segment proxy refs 确定性重算最终 Query 的 per-segment relevance；
   允许重复这一次廉价点积以保持公共 schema 简洁，但不得换 query/model/template、重新抽帧或使用不同空间；
 - cheap proxy frames/embeddings 按 catalog item/segment 预计算并跨用户复用，不在每个请求中重新抽取；
-- 只有最终选中的一个 segment 进入 expensive path，按 P4-ARCH-01 的方向额外均匀抽取八帧供冻结 Deep
-  Segment Encoder；P4-04 仍需确认如何把已选 Query 的 relevance 与 rank/novelty 合成 Segment Value，P4-05
-  仍需确认 selected-segment uniform-8 decode/preprocess 和 exact Deep Encoder contract。
+- `25%/50%/75%` 三帧只作为跑通第一条 P4 pipeline 的工程 baseline，不声明为最终最优采样；frame count、
+  sampling positions、medoid/uniform/denser alternatives 明确留给 P6 独立消融，不能静默改变 P4 artifact recipe；
+- 只有最终选中的一个 segment 进入 expensive path；P4-04 已确认只使用 selected-Query pure relevance，不再
+  加入 rank/novelty；P4-05 已确认 eight-bin-center 目标采样、2—8 张真实有效帧与 pinned frozen
+  Chinese-CLIP image tower contract。
+
+### 6.5 Deferred Query/Frame Experiment Matrix
+
+P4 先冻结当前 Memory、concept 和 three-frame recipes 跑通可复现 pipeline；正式 P6 实验分开评估两类会直接
+改变 Query 的因素：
+
+- Query-generation / Memory side：short recent window、long recency half-life、max active atoms、inactive threshold、
+  persistence saturation、strength/persistence importance、stable/emerging/fading transition、concept df/IDF/cap、
+  query template、encoder 和 calibration；
+- frame/perception side：proxy source decode resolution、sparse high-resolution vs dense low-resolution、
+  3/6/8/12/16 frame count、relative positions、uniform/medoid/scene-aware sampling、invalid-frame replacement、
+  frame/segment aggregation、proxy encoder，以及 selected-segment 4/8/16/32 deep frame count/sampling/token aggregation。
+
+Proxy 的目标是提高 selected-segment 命中率，Deep Encoder 的目标是读取已选 segment，二者必须拆开实验。
+若仍经 official 224×224 processor，低清 source frame 只直接降低 decode/cache/transfer 成本，不降低每帧
+image-tower FLOPs；增加 proxy 帧数时 aggregation 也要共同版本化，避免固定 top-2 引入 multiple-comparisons bias。
+
+实验先固定一侧只改变另一侧，再组合各自最佳候选；每个 variant 必须有独立 config、recipe/version、artifact
+identity 和 split-safe rebuild，不能跨 variant 复用不兼容的 Memory/Query/proxy/Evidence artifacts。报告不仅包括
+最终 ranking gain 和 cost，也包括 Query fallback rate、candidate-difference/evidence-gap 分布、Query 稳定性及
+selected-segment 分布。
 
 ### P4-03 Decision Record
 
@@ -649,7 +674,7 @@ Alternatives considered: 继续使用 `importance * evidence_gap`；title/LLM/�
 Affected schemas/interfaces: 复用 `InformationNeed`、`RecommendationState`、`SegmentProxyRef` 和 metadata；`contrastiveness` 承载 candidate difference，`embedding_ref` 指向 selected Chinese-CLIP query vector，Evidence acquisition metadata 关联 concept/query-template/supporting atom IDs。新增 internal versioned concept resolver、query encoder/proxy artifact 和 compact diagnostics；不修改 P1 Controller 顺序，不在公共 State 内嵌 Tensor/raw frames/全量 per-segment scores。
 Affected docs/tests: todo/phase_4_discussion.md；docs/04_information_need.md；README.md；后续测试覆盖 train-only vocabulary/metadata/checksum IDF closure、禁止 validation/test/target/future inventory 重算、min-df/IDF/top-32/no-tag-count-normalization/template、exact model/processor/vector space、25/50/75 replacement/invalid-frame fail-closed、top-2 frame/segment aggregation、proxy rank mass、Top-100 reciprocal-rank pairwise difference、0.10 floor、binary successful coverage、initial gap=1、rerank recomputation、typed fallback、compact metadata、P4-04 exact-query recomputation、item-agnostic output 和无 future-feedback leakage。
 Resolved follow-up: candidate-aware Need、concept source/filter/cap、train-only IDF/no tag-count normalization、query templates、raw cosine/no P4 calibration、proxy frame contract、segment/candidate aggregation、Top-100 missingness/rank weighting、contrast floor、Evidence coverage、round-to-round semantics、fallback、public field mapping 和 P4-03/P4-04 boundary。
-Deferred follow-up: P4-04 Segment Value 组合式与 min value；P4-05 selected-segment uniform-8/Deep Encoder；P6 calibration、df/cap/aggregation/floor/text-only/query-free ablations；P7 learned/multi-need estimator。
+Deferred follow-up: P6 calibration、df/cap/aggregation/floor、proxy source resolution/frame count/sampling positions、text-only/query-free ablations；P7 learned/multi-need estimator。P4-04/P4-05 后续项已由各自 Decision Record 解决。
 Confirmed by: User
 Date: 2026-08-06
 ```
@@ -658,71 +683,77 @@ Date: 2026-08-06
 
 ## 7. P4-04 — Heuristic Segment Value Baseline
 
-Status: `Pending`
+Status: `Confirmed`
 
 ### 7.1 定位
 
 P4 的 Segment Value 只是为了在真实候选上选择一段可观察内容：
 
 ```text
-cheap relevance / uncertainty / rank / coverage heuristic
+selected-query cheap visual relevance
 ```
 
 它不学习 expected recommendation gain，也不能称为最终 Segment Value Model。
 
-### 7.2 推荐 baseline（待确认）
+### 7.2 已确认 baseline
 
 1. 继承 P4-03 已确认的 exact Chinese-CLIP proxy artifact 和 selected-query `embedding_ref`；P4-04 只为最终
    Query 确定性重算各 eligible segment 的 top-2-of-3 relevance，不换模型/template、重新抽帧或比较 BGE-M3
    与视觉向量。
-2. Proxy model/revision、official processor、frame eligibility 和 vector contract 不再是本 Gate 的研究变量；
-   本 Gate 只负责 Segment Value 组合、eligibility、threshold 和 trace。
-3. value 由透明的配置权重组合：
+2. 对 selected Query 的 L2-normalized 512-D text vector `q` 与 eligible segment 的有效 frame vectors
+   `f_1..f_m`（`m` 为 2 或 3）计算 raw cosine；降序取最高两个：
 
 ```text
-selected-query segment relevance
-+ current-rank priority
-+ optional evidence novelty
+c_k = dot(q, f_k)
+SegmentValue(item, segment) = mean(top-2(c_1..c_m))
 ```
 
-   `preference importance` 和 `candidate difference` 已在 P4-03 选择 Query 时使用，P4-04 不重复乘入；
-   request-level ranking uncertainty 只进入 StopPolicy，不作为所有 segments 共有的相对排序常数。
+3. final `SegmentValue.value` 就是该 raw top-2-of-3 mean，不再加入或乘入 current rank、preference importance、
+   candidate difference、evidence gap、ranking uncertainty 或 item-level evidence novelty。前述信号已在 P4-03
+   Query/Stop 决策中使用；重复加入会双重计权并削弱 P4-02 的完整 Top-100 纠错空间。
+4. eligible segment 必须属于当前 Top-100、media/proxy complete、至少有两张合法 proxy frames、状态为
+   `unobserved`，并使用 P4-03 输出的 exact query/model/template/proxy identities。已成功观察的同一 segment
+   不得重复进入 input；failed/retry eligibility 由 P4-08 统一决定。
+5. P4 baseline 固定 `min_segment_value=null`：只要 budget 尚存且至少有一个 eligible segment，就选择全局
+   maximum raw relevance；P4 记录完整 value 分布，不在没有 validation calibration 时设置 cosine threshold。
+6. 全部输入在 prediction cutoff 可得；不使用 MLLM Evidence、future label、after ranking 或 actual gain。
+7. 输出严格覆盖所有 input `(item, segment)`；metadata 至少记录 query/proxy identities、frame cosines、top-2
+   aggregation、eligibility 和 final raw value。相同 final value 使用既有 Controller `(item_id, segment_id)`
+   identity tie-break。
+8. deterministic random-perception comparator 延后到 P6 selection ablation，不进入 P4 主实现和 DoD。
 
-4. 全部输入在 prediction cutoff 可得；不使用 MLLM Evidence、future label、after ranking 或 actual gain。
-5. media/proxy eligibility、各分项和 final value 写入 `SegmentValue.metadata`，便于 trace 和 ablation。
-6. 输出严格覆盖所有 input `(item, segment)`；相同 final value 仍由 Controller identity tie-break。
-7. 提供 deterministic random-perception comparator 只作后续 ablation/sanity，不替代主 heuristic。
+### 7.3 已关闭决策
 
-### 7.3 需要确认
-
-- value 的加法/乘法形式和首版权重；
-- rank prior 在完整 Top-100 cheap search 中是否过强；
-- `min_segment_value` 的可解释范围；
-- optional evidence novelty 的 exact 定义；
-- random comparator 是否 P4 同步实现或留到 P6。
+- value 为 selected-query raw top-2-of-3 frame cosine mean，不使用加权组合；
+- 不加入 rank prior、importance、candidate difference、evidence gap、uncertainty 或 novelty；
+- `min_segment_value=null`，P4 只记录分布，threshold/calibration 延后；
+- all-eligible full Top-100 global argmax，每轮只选一个 segment；
+- random comparator 延后 P6。
 
 ### P4-04 Decision Record
 
 ```text
 Decision ID: P4-04
-Status: Pending
-Decision: TBD
-Rationale: TBD
-Alternatives considered: TBD
-Affected schemas/interfaces: TBD
-Affected docs/tests: TBD
-Deferred follow-up: TBD
-Confirmed by: TBD
-Date: TBD
+Status: Confirmed
+Decision: P4 heuristic Segment Value 使用纯 selected-Query relevance。对 P4-03 exact Chinese-CLIP query vector 与每个 eligible unobserved segment 的 2/3 张 proxy frame vectors 计算 raw cosine，value 为最高两帧 cosine 的算术平均；在完整 Top-100 全部 eligible segments 上取全局 argmax。P4 不加入 rank、importance、candidate difference、evidence gap、uncertainty 或 novelty，且 `min_segment_value=null`。
+Rationale: P4-03 已用 Memory importance、rank-weighted candidate difference 和 Evidence gap 选择 Query，StopPolicy 负责 request-level uncertainty；P4-04 重复加入这些信号会双重计权、引入任意权重并压制低排名候选。纯 relevance baseline 最小、可解释、可复算，直接回答“哪个未观察 segment 最能回答已选 Query”。
+Alternatives considered: relevance+rank+novelty 加法；乘法 gate；只搜索 Top-L；item-first selection；固定 raw-cosine threshold；P4 同步 random comparator；learned expected-gain model。
+Affected schemas/interfaces: 复用 `SegmentValueModel`、`SegmentValueInput`、`SegmentValue` 和 Controller global-argmax contract；不修改公共 schema。metadata 固定记录 exact query/proxy identities、frame cosines、aggregation 和 eligibility。
+Affected docs/tests: todo/phase_4_discussion.md；docs/04_information_need.md；docs/05_segment_value_model.md；后续测试覆盖 exact-query reuse、top-2-of-3 arithmetic、2-frame boundary、invalid/ineligible exclusion、all-input output coverage、full Top-100 argmax、tie determinism、no duplicate observation、no forbidden extra signals 和 `min_segment_value=null`。
+Resolved follow-up: value 形式、rank/novelty 边界、threshold、random comparator phase ownership 和 P4-03/P4-04 信号去重。
+Deferred follow-up: P5 supervised expected-gain Segment Value；P6 rank/novelty/threshold/random/query-free selection 以及 proxy frame count/sampling ablations。P4-05 已由其 Decision Record 解决。
+Confirmed by: User
+Date: 2026-08-06
 ```
 
 ---
 
 ## 8. P4-05 — Deep Segment Encoder, Selected Frames, and Artifact Contract
 
-Status: `Pending`
+Status: `Confirmed`
 
-当前主线已由 P4-ARCH-01 锁定为 frozen Deep Segment Encoder。P4-05 只待确认 exact encoder/revision、8-frame decode/preprocess、batch/cache 和 cost profile；MLLM/prompt 细节移至 P6 对比支线。
+当前主线已由 P4-ARCH-01 锁定为 frozen Deep Segment Encoder。P4-05 确认复用 pinned Chinese-CLIP image
+tower，对 selected segment 最多八张均匀帧输出 latent frame tokens；MLLM/prompt 细节继续只属于 P6 对比支线。
 
 ### 8.1 要解决的问题
 
@@ -733,7 +764,33 @@ Status: `Pending`
 - prompt 能看到哪些用户/候选信息；
 - 解码、timeout、retry 和 determinism 如何记录。
 
-### 8.2 历史 MLLM proposal（已由 P4-ARCH-01 superseded）
+### 8.2 已确认 Deep Encoder baseline
+
+1. Encoder 固定复用 P4-03 的 `OFA-Sys/chinese-clip-vit-base-patch16` revision
+   `36e679e65c2a2fead755ae21162091293ad37834` image tower 和 official 224×224 processor；模型完全 frozen、
+   `eval`/inference-only，不训练、不调用 text tower，不引入第二个未经核验的视频模型；
+2. 将 selected segment 均分为八个时间 bin，目标 timestamp 为每个 bin 的中心，即段内
+   `6.25/18.75/31.25/43.75/56.25/68.75/81.25/93.75%`。按 deterministic nearest-PTS/坏帧替换规则寻找
+   RGB frames，去重并过滤黑帧、严重模糊和越界帧；
+3. 目标为最多八张有效帧。得到 2—7 张时保留真实有效帧数量并使用 mask，不复制帧凑满八张；少于两张时
+   返回 typed decode/insufficient-frames failure，不发布 latent Evidence；
+4. 每张有效帧输出一个 FP32、L2-normalized 512-D image vector，主 artifact 保存有序
+   `frame_tokens[F,512]`、timestamps、frame checksums、valid mask、segment boundaries、processor/model/revision、
+   sampling recipe 和 dtype。P4 不先压成单一 mean embedding；聚合方式由 P4-07 Small Reranker 决定；
+5. Deep Encoder 是 content-only：不读取 Query、Memory、user ID、rank、target、future feedback、title、tags、
+   subtitle、ASR 或 audio。Query/Memory 与 latent frame tokens 只在后续 Reranker 中融合，因此同一内容 artifact
+   可跨用户/Query 安全复用；
+6. 第一条 online path 使用 in-process inference 和 logical batch size 1；训练/Oracle artifact 构建可做
+   deterministic batching，但必须产生同一 canonical outputs。Cache key 至少覆盖 media checksum、segment
+   boundaries、actual timestamps/frame checksums、sampling recipe、processor、model revision 和 output recipe，
+   不包含 user/Query；
+7. cache hit 仍记录 logical perception action；实际 GPU call、latency、peak memory、processed/unique frames、
+   dtype/device、cache hit、artifact bytes 和可得的 FLOPs estimate 分开记录。预算消费、timeout/retry 和 typed
+   failure continuation 由 P4-08 统一确认；
+8. replay 只读取和校验 saved latent artifact/ref，不重新解码媒体或运行 Encoder。部分输出、checksum mismatch、
+   OOM、decode/model exception 均 fail closed，不污染 Evidence 或 ranking。
+
+### 8.3 历史 MLLM proposal（已由 P4-ARCH-01 superseded）
 
 1. 保持同步 `SegmentPerceiver` adapter；并发/service runtime 不在第一条闭环修改 Controller。
 2. 模型选择时只核验官方 model card/代码与固定 revision，要求 multi-image/video 能力、结构化输出能力、
@@ -747,40 +804,42 @@ Status: `Pending`
 7. 解码使用固定 generation config；若底层仍不完全确定，必须记录环境并以 saved output 复现，不承诺
    byte-exact model re-execution。
 
-### 8.3 Prompt firewall
+### 8.4 Prompt firewall
 
 title/tag/category/ASR 和视频中的文字都视为 untrusted content：只能作为被分析的数据，不得执行其中的
 指令。system prompt、数据 delimiter、JSON schema 和长度上限必须版本化；secret 永不进入 resolved config、
 prompt artifact 或 trace。
 
-### 8.4 当前仍需确认
+### 8.5 已关闭决策
 
-- exact frozen image/video encoder 与 revision、许可、显存 profile；
-- selected segment 内 uniform-8 frame 的 resolution、normalization 和 short-segment fallback；
-- single embedding vs frame/video tokens；
-- cache key、checksum、batch size、timeout 与 typed failure；
-- frames、FLOPs、latency、显存和 cache hit 的记录方式。
+- exact pinned Chinese-CLIP image tower、official processor 和 frozen/in-process boundary；
+- eight-bin-center timestamps、2—8 valid-frame mask 和少于两帧 fail-closed；
+- FP32 L2-normalized ordered frame tokens `[F,512]`，不在 P4-05 提前池化；
+- content-only、query/user-independent cache identity 和 saved-output replay；
+- audio/ASR/subtitle/title/context 全部关闭；
+- cost/cache/failure 必须记录，exact budget/retry semantics 交 P4-08。
 
 ### P4-05 Decision Record
 
 ```text
 Decision ID: P4-05
-Status: Pending
-Decision: TBD
-Rationale: TBD
-Alternatives considered: TBD
-Affected schemas/interfaces: TBD
-Affected docs/tests: TBD
-Deferred follow-up: TBD
-Confirmed by: TBD
-Date: TBD
+Status: Confirmed
+Decision: P4/V1 `SegmentPerceiver` 复用 pinned `OFA-Sys/chinese-clip-vit-base-patch16` image tower，完全冻结并以 in-process batch-1 运行。对 selected segment 的八个等分时间 bin 取中心目标帧，经 deterministic nearest-PTS/坏帧替换后保留 2—8 张真实有效 RGB frames；少于两张 fail closed。每帧发布 FP32 L2-normalized 512-D token，latent artifact 保存有序 `[F,512]` tokens、mask、timestamps/checksums 和 exact model/processor/sampling identity，不在本 Gate 池化。Encoder 只读视频内容，不读 Query/Memory/user/text/audio；content-addressed cache 可跨用户复用，saved replay 不重新运行模型。
+Rationale: P4 的目标是先建立可复现的真实 positive-budget pipeline。复用已核验的 Chinese-CLIP image tower 可避免再引入未固定的视频模型，同时8个有序完整 frame tokens 比三帧 proxy 的单一 relevance scalar 提供明显更丰富的 latent Evidence。content-only boundary 保持缓存、安全和 Reranker 职责清晰，variable valid-frame mask 避免短片段靠复制帧制造虚假信息。
+Alternatives considered: X-CLIP/VideoMAE/InternVideo 等原生视频编码器；同三帧 proxy 直接复用；单一 pooled segment embedding；固定复制/补帧到8；16/32帧；Query-conditioned encoder；audio/ASR/subtitle/title fusion；external API/server。
+Affected schemas/interfaces: 实现既有 `SegmentPerceiver`；latent tensor 存外部 versioned artifact，P4-06 已确认由 per-segment `Evidence.embedding_ref` 指向 bundle manifest，P4 baseline 不生成 aggregate ref。公共 State/Trace 不内嵌 Tensor/raw frames；新增 internal frame resolver、encoder adapter、artifact publisher/cache 和 cost sidecar。
+Affected docs/tests: todo/phase_4_discussion.md；docs/active_multimodal_reranker_engineering_spec.md；todo/implementation_roadmap.md；后续测试覆盖 exact revision/processor、bin-center timestamps、nearest-PTS/invalid filtering、2/7/8-frame masks、少于2帧失败、FP32/L2/token ordering、content-only inputs、cache identity/corruption、batch equivalence、replay no-model-call 和 cost metadata。
+Resolved follow-up: exact encoder/revision、uniform-8 timestamp recipe、short-segment fallback、token-vs-pool、text/audio boundary、batch/cache/replay 和 cost fields。
+Deferred follow-up: P4-07 token aggregation/Reranker；P4-08 timeout/retry/action accounting；P6 proxy low-resolution dense-frame、4/8/16/32 deep-frame、sampling/aggregation、native video encoder 和 Query-conditioned/audio ablations。P4-06 latent Evidence public-ref/failure publication 已由其 Decision Record 解决。
+Confirmed by: User
+Date: 2026-08-06
 ```
 
 ---
 
 ## 9. P4-06 — Latent Evidence, Failure, and Public-Ref Boundary
 
-Status: `Pending`
+Status: `Confirmed`
 
 主线 Evidence 使用外部 latent artifact + existing `Evidence.embedding_ref`；公共 State/Trace 不内嵌 Tensor。下方 structured-text vocabulary/parser 作为历史 MLLM proposal 保留，仅归 P6 对比支线。
 
@@ -812,27 +871,49 @@ summary: bounded optional text
 5. raw response 即使失败也进入受控 sidecar，便于诊断，但不进入公开仓库或论文补充材料；
 6. model self-confidence 只作为未经校准的 heuristic signal，不能描述成真实概率。
 
-### 9.3 当前仍需确认
+### 9.3 已确认 latent Evidence baseline
 
-- latent artifact schema、dtype/shape、encoder/preprocess revision 与 checksum；
-- per-segment `embedding_ref` 到 aggregated `evidence_embedding_ref` 的确定性规则；
-- missing/corrupt/cache mismatch/encode timeout 的 typed failures；
-- failed perception 不产生 Evidence、不改变 score，但 action/cost 仍按 P1 规则记录；
-- public ref、sidecar、隐私、许可和 replay closure。
+1. 每个成功观察的 segment 发布一个 content-addressed latent bundle。Canonical entry point 为
+   `manifest.json`，payload 为 `frame_tokens.npy`；NPY 只允许非 object tensor 并以 `allow_pickle=False` 加载。
+   `frame_tokens` 必须是 finite FP32 `[F,512]`，`2 <= F <= 8`，各行满足已确认 L2 normalization contract。
+2. Manifest 至少保存 schema/recipe version、item/segment identity、media checksum、segment boundaries、实际
+   timestamps/frame checksums、valid-slot mask、tensor shape/dtype、model/revision、processor、sampling/output recipe，
+   以及 payload `ResourceRef`、SHA-256 和 size。Manifest 与 payload 均先写临时文件、校验后原子发布；partial
+   bundle 不得获得公共 ref。
+3. 成功的 `Evidence.embedding_ref` 指向该 bundle manifest，而不是把 Tensor 内嵌到 State/Trace；`source` 固定为
+   versioned latent perceiver identity。`attributes` 只保存 `evidence_kind=latent_frame_tokens`、schema version、
+   frame count 和 token dim 等紧凑 typed facts；`metadata` 关联 acquisition step、Information Need ID/concept、
+   supporting atom IDs、query/template identities 与 artifact/model recipe。content artifact 本身仍不含 user/Query。
+4. Latent baseline 不生成文本或校准概率，因此 `text_summary=null`、`confidence=null`、`raw_output_ref=null`。
+   `evidence_id` 由 run ID、action step、item/segment identity 和 manifest checksum 确定性派生；同一 cached content
+   在不同 run 中仍形成各自的 Evidence event，但共享同一 content artifact ref。
+5. P4-06 不做 frame pooling 或多 segment 聚合。每次成功只把 per-segment Evidence 按 action order 追加到对应
+   `ItemEvidenceState.evidence`；`aggregated_attributes` 只维护 evidence/segment/frame-count inventory，
+   `evidence_embedding_ref=null`。P4-07 从全部 per-segment refs 加载 tokens，并负责 learned frame/segment aggregation。
+6. 只有 bundle 发布、checksum/schema/identity 校验全部成功后才返回 `ObservationStatus.SUCCEEDED`。失败统一返回
+   `FAILED`、`evidence=null` 和稳定 failure code，至少区分 `decode_failed`、`insufficient_valid_frames`、
+   `encoder_timeout`、`encoder_oom`、`encoder_failed`、`artifact_write_failed`、`artifact_missing`、
+   `artifact_corrupt` 和 `cache_mismatch`；failure reason 必须清洗 secret 与绝对路径。
+7. failed perception 只更新 `ObservationState` 和 cost/failure sidecar：不产生 Evidence、不调用 ScoreUpdater、排名
+   保持不变。一次 attempt 的 action 消耗、retry eligibility 和底层 call accounting 继续由 P4-08 确认。
+8. public State/Trace/Result 只保存 ResourceRef 与紧凑 JSON metadata，不保存 raw frames、token values、受限媒体、
+   secret 或绝对路径。latent/cost/failure artifacts 使用声明的受控 root，默认不提交公开仓库。Saved replay 只解析
+   manifest/payload refs 并校验 closure，不重新解码或运行 Encoder；missing/corrupt/mismatch 必须 fail closed。
 
 ### P4-06 Decision Record
 
 ```text
 Decision ID: P4-06
-Status: Pending
-Decision: TBD
-Rationale: TBD
-Alternatives considered: TBD
-Affected schemas/interfaces: TBD
-Affected docs/tests: TBD
-Deferred follow-up: TBD
-Confirmed by: TBD
-Date: TBD
+Status: Confirmed
+Decision: P4 latent Evidence 采用 per-segment content-addressed bundle：canonical manifest 绑定一个 finite FP32 `[F,512]`（2—8帧）`frame_tokens.npy` payload、mask/timestamps/frame checksums、exact encoder/processor/sampling identities 与 checksum closure。成功 Evidence 的 `embedding_ref` 指向 manifest，文本、confidence 和 `raw_output_ref` 均为空；Evidence event 记录 acquisition Need/step，但 content artifact 保持 user/query independent。P4-06 不池化 frames、不聚合同 item 多 segments，`evidence_embedding_ref=null`，全部 learned aggregation 交 P4-07。只有 artifact 原子发布并完整校验后才产生 Evidence；失败只产生 typed failed observation/cost record，排名不变。公共 State/Trace 只保存 refs/紧凑 metadata，saved replay 只校验并加载 saved artifact，不重新运行 Encoder。
+Rationale: 保留 ordered frame tokens 可避免在 Reranker 之前不可逆丢失时间与局部视觉信息，也使 P4-07 可以统一学习 frame/segment aggregation。将 content artifact 与 run-specific Evidence event 分离，可跨用户/Query 复用缓存，同时保留本轮 Information Need provenance。manifest-first checksum closure、atomic publication 和 fail-closed replay 防止 partial/corrupt tensor 静默污染 EvidenceState 与排名。
+Alternatives considered: 在 P4-06 对 frames 求 mean/max；同 item 多 segment 预先平均为 `evidence_embedding_ref`；Tensor/raw frames 内嵌公共 State；裸 tensor ref 不绑定 manifest；把 latent token 伪装成文本 summary/confidence；partial tokens 作为成功 Evidence；replay 时缺 artifact 自动重跑 Encoder。
+Affected schemas/interfaces: 复用现有 `Evidence`、`ItemEvidenceState`、`EvidenceState`、`PerceptionResult`、`ObservationState` 和 `ResourceRef`，不修改公共 schema shape。新增 internal latent bundle manifest/publisher/loader、production Evidence/Observation updater 规则和 failure-code vocabulary；`Evidence.embedding_ref` 指向 manifest，`ItemEvidenceState.evidence_embedding_ref` 在 P4 baseline 保持 null。
+Affected docs/tests: todo/phase_4_discussion.md；docs/00_shared_domain_schemas.md；docs/active_multimodal_reranker_engineering_spec.md；todo/implementation_roadmap.md；后续测试覆盖 NPY no-pickle、2/7/8-frame shape/dtype/finite/L2、manifest/payload checksum closure、atomic/no-partial publication、deterministic evidence ID、Need provenance、cache reuse/event separation、append order、no pooling/aggregate ref null、typed failures、failed no-Evidence/no-score-update、path/secret sanitization 和 replay no-model-call。
+Resolved follow-up: latent bundle schema、public `embedding_ref`、run event/content identity separation、no-aggregation boundary、null text/confidence/raw-output fields、typed failures、atomic publication、privacy/public sidecar 和 saved replay closure。
+Deferred follow-up: P4-07 exact learned frame/segment aggregator；P4-08 retry、budget、timeout 和 physical-call accounting；P6 alternate storage format、pooling baselines、precomputed aggregate refs 与 privacy/license release study。
+Confirmed by: User
+Date: 2026-08-06
 ```
 
 ---
@@ -1088,16 +1169,16 @@ Date: TBD
 | P4-01 | media subset、segments、resource contract | Confirmed |
 | P4-02 | Top-100 recall/rerank、all-eligible cheap search、Top-1 output | Confirmed |
 | P4-03 | candidate-aware rule-based Information Need | Confirmed |
-| P4-04 | heuristic Segment Value | Pending |
+| P4-04 | pure Query-relevance Segment Value | Confirmed |
 | P4-ARCH-01 | Deep Encoder + Small Reranker architecture amendment | Confirmed |
-| P4-05 | Deep Encoder、selected frames、artifact | Pending |
-| P4-06 | latent Evidence/failure/public refs | Pending |
+| P4-05 | frozen Chinese-CLIP、2—8 selected frames、latent tokens | Confirmed |
+| P4-06 | per-segment latent bundle、typed failure、public refs | Confirmed |
 | P4-07 | Small Candidate-aware Multimodal Reranker | Pending |
 | P4-08 | runtime/budget/cache/cost/replay | Pending |
 | P4-09 | evaluation/tests/DoD | Pending |
 | P4-XG-01 | cross-gate audit and implementation authorization | Pending |
 
-下一项：确认 P4-04 Heuristic Segment Value Baseline。
+下一项：确认 P4-07 Small Candidate-aware Multimodal Reranker。
 
 ---
 

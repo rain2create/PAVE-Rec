@@ -3,7 +3,7 @@
 
 ## 1. 模块目标 Purpose
 
-每次 MLLM perception 后：
+每次 selected-segment perception 后：
 
 ```text
 new multimodal evidence
@@ -53,7 +53,7 @@ succeeded
 failed
 ```
 
-`succeeded` 表示已经获得有效的结构化 Evidence；`failed` 表示 Perceiver 已经
+`succeeded` 表示已经获得可校验的 Evidence/ref；`failed` 表示 Perceiver 已经
 被调用但没有产生有效 Evidence。失败仍消耗一次 perception action，Phase 1
 不自动重试。
 
@@ -62,9 +62,13 @@ failed
 metadata；Recommendation State 中的 observation 和 unobserved segment
 列表都是 Builder 构造的只读派生快照。
 
-State 和 Score Updater 只消费轻量结构化 Evidence。原始 MLLM response、完整
-API response、媒体、frame 和 Evidence embedding 存在 artifacts/Store 中，并
-通过 reference 关联；保存这些内容不代表将它们加入 MLLM prompt。
+State 和 Score Updater 只消费轻量 Evidence metadata/ref。媒体、raw frames 和 latent token values
+存在受控 artifacts/Store 中，并通过 reference 关联，不内嵌公共 State/Trace。
+
+P4-06 已确认每个成功 segment 对应一个 content-addressed latent bundle：manifest 闭包绑定 FP32
+`frame_tokens[F,512]`（2—8帧）payload、mask/timestamps/checksums 和 exact encoder/preprocess/sampling identity。
+`Evidence.embedding_ref` 指向 manifest；latent baseline 的 `text_summary`、`confidence`、`raw_output_ref` 为空。
+Acquisition Need/step 记录在 Evidence event metadata，content artifact 本身保持 user/query independent。
 
 ---
 
@@ -98,13 +102,17 @@ P1-03 已确认两个 updater 都是纯状态转换并返回新对象。Evidence
 中的 `step` 相同。权威接口见
 [`00_component_interfaces.md`](00_component_interfaces.md)。
 
-V1 可以简单做：
+P4-06 updater 固定做：
 
 ```text
 append evidence
 +
-aggregate duplicate attributes
+update compact evidence/segment/frame-count inventory
 ```
+
+它不对 frame tokens 求 mean/max，也不合并同 item 的多个 segment；`evidence_embedding_ref=None`。
+P4-07 Small Reranker 从 action-ordered per-segment refs 加载 tokens 并负责 learned aggregation。
+Failed perception 只进入 ObservationState 和 cost/failure sidecar，不产生 Evidence、不调用 ScoreUpdater。
 
 ---
 
@@ -190,11 +198,10 @@ UnifiedEvidenceRanker
 MockScoreUpdater
 ```
 
-Phase 4 必须在真实 MLLM Evidence 进入 ranking 前确认第一条可解释 residual baseline，
-包括 Evidence aggregation、delta 的确定性含义、score scale/calibration、未观察 item prior
-保留和 StopPolicy compatibility。它是可替换 baseline，不代表 residual 已成为最终研究
-架构。Unified/learned reranker 在 Phase 6 完成 baseline evaluation 后归入 Phase 7
-optional advanced research。
+P4-ARCH-01 已确认主线使用 Small Candidate-aware Multimodal Reranker，而不是 MLLM residual rule。
+P4-07 仍需确认 exact frame/segment aggregator、network capacity、training objective、score calibration、
+未观察 item prior 与 StopPolicy compatibility。无论具体网络如何，每轮必须从固定 initial SASRec prior +
+完整当前 EvidenceState 重算全部 candidates，不能递归累计 previous scores。
 
 ---
 
@@ -234,8 +241,9 @@ SASRec prior
 
 ## 8. TBD
 
-- residual vs unified reranker
-- evidence aggregation
+- P4-07 exact Small Reranker architecture/capacity
+- learned frame/multi-segment Evidence aggregation
 - evidence embedding method
 - training targets
 - whether evidence changes only the selected item's score or all candidates
+- P6 pooled/aggregate-ref comparator
