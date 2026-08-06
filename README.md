@@ -470,7 +470,7 @@ loop 内执行切分或批量特征提取。Fixture invocation 只用于复现 P
 - exact preference atom extraction algorithm
 - exact long/short matching threshold
 - memory decay / promote thresholds
-- exact information-need scoring formula
+- P6 calibration/alternative aggregation and later learned Information Need beyond the confirmed P4-03 baseline
 - value-model neural architecture
 - expected recommendation gain label
 - score-update architecture

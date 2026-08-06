@@ -1,6 +1,6 @@
 # Phase 4 Discussion — Real Active Perception Baseline
 
-Status: `Confirmed`
+Status: `In Discussion`
 
 本文档用于逐项确认 Phase 4 的研究与工程边界。它继承已经完成的 P1–P3，目标是尽快跑通
 第一条真实的正预算 Agent Loop：真实 Recommendation State 产生 Information Need，选择真实视频
@@ -416,8 +416,9 @@ Resolved follow-up:
 media handoff architecture、P2 compatibility amendment、scene segmentation、sparse frame recipe、two-stage subset、
 missing-media semantics、artifact/version/privacy boundary。
 Deferred follow-up:
-P4-02 已解决 candidate/search protocol；P4-04 exact semantic proxy encoder/threshold；P4-05 exact Deep Encoder/frame
-preprocessing；official-100 audit 后的 parameter adjustment；P6 segmentation ablation and final scale。
+P4-02 已解决 candidate/search protocol；P4-03 已确认 exact semantic proxy encoder/frames 和 Need contract；
+P4-04 仍待 Segment Value 组合/threshold；P4-05 exact Deep Encoder/frame preprocessing；official-100 audit 后的
+parameter adjustment；P6 segmentation/proxy/calibration ablations and final scale。
 Confirmed by: User
 Date: 2026-08-05
 ```
@@ -426,7 +427,7 @@ Date: 2026-08-05
 
 ## 5. P4-02 — Candidate Pool and Active Search Space
 
-Status: `In Discussion`
+Status: `Confirmed`
 
 ### 5.1 要解决的问题
 
@@ -437,7 +438,7 @@ P3 的 full-catalog Top-100 是 item-level recall handoff，不表示 Deep Encod
 - media 不完整、OOV、seen item 和 target miss 如何处理；
 - smoke candidate 与正式 research candidate 如何区分。
 
-### 5.2 推荐 baseline（待确认）
+### 5.2 已确认 baseline
 
 1. research path 保留 `full train vocabulary → SASRec Top-100 → Agent State`，不注入 held-out target。
 2. State 内保留完整 Top-100 prior；首版 heuristic 对全部 Top-100 中 media-complete、具有 cheap proxy 的未观察 segments 计算 value，不设置固定 Top-L item gate。
@@ -493,19 +494,31 @@ Information Need 必须说明“当前排序为了做出更好决策最缺哪类
 
 ### 6.2 已确认 baseline
 
-第一版保留一个显式、item-agnostic Query。Query 只从 public `UserMemoryView` 的
-stable/emerging/fading preference atoms 中确定性选择，不从 segment 反推，也不调用 LLM 生成自由文本：
+> 2026-08-06 candidate-aware amendment：原先只按 `importance * evidence_gap` 选择 Memory atom，
+> 第一轮所有 gap 都为 `1`，会退化为“复述最强兴趣”，不能回答当前 Top-100 到底卡在哪个区分问题上。
+> 本 amendment 保留显式、item-agnostic Query 和既有 Memory/evidence 规则，但增加由当前候选 cheap
+> visual proxies 计算的 `candidate_difference`，并以它决定哪个兴趣概念成为本轮 Information Need。
+> 用户随后确认按本节建议收紧 vocabulary、raw-cosine、聚合、coverage、floor、fallback 和跨轮语义；
+> P4-03 现已恢复为 `Confirmed`。Per-query calibration 明确不进入 P4 baseline，只作为 P6 对照实验。
+
+第一版保留一个显式、item-agnostic Query。Query 的候选概念从 public `UserMemoryView` 的
+stable/emerging/fading preference atoms 确定性派生，不调用 LLM 生成自由文本；当前 Top-100 的 proxy
+差异只负责决定哪个概念胜出，不把 Query 预先绑定到某个 item：
 
 ```text
 User Memory preference atoms
         ↓
-preference importance × evidence gap
+deterministic tag/category need concepts（最多 32 个）
         ↓
-highest-scoring preference atom
+Chinese-CLIP text query × every proxy-complete segment's three frames
         ↓
-fixed-template InformationNeed / Query
+rank-weighted candidate difference
         ↓
-P4-04 scores every eligible Top-100 segment against that Query
+importance × candidate difference × evidence gap
+        ↓
+highest-scoring item-agnostic InformationNeed / Query
+        ↓
+P4-04 reuses the selected Query's segment relevance to choose one segment
 ```
 
 首版 need types：
@@ -517,49 +530,126 @@ P4-04 scores every eligible Top-100 segment against that Query
 
 具体规则：
 
-1. estimator 只读 `RecommendationState.user_memory`、current ranks 和现有 Evidence，不修改 Memory；
+1. estimator 只读 `RecommendationState` 及其 exact-pinned semantic/proxy refs，不修改 Memory、candidate、
+   Evidence 或 proxy artifacts；artifact resolver 只能解析 State 已绑定的 identity，不能选择 `latest`；
 2. 单 atom importance 定义为 `strength * (0.5 + 0.5 * persistence)`，让 persistence 温和增强重复出现的兴趣，
    但不把一次新出现的 emerging interest 直接乘没；
 3. emerging need 使用 short atom importance，fading need 使用 long atom importance；stable match 分别计算 long/short
    importance 后取算术平均，并同时引用两个 atom IDs；
-4. 对 preference `q` 和当前 candidate `i`，若该 item 已有至少一个成功、且 acquisition metadata 引用 `q`
-   的 Deep Evidence，则 `coverage(i,q)=1`，否则为 `0`。令当前 Top-100 内
-   `w_i=(1/current_rank_i)/sum_j(1/current_rank_j)`，则
-   `evidence_gap(q)=sum_i w_i * (1-coverage(i,q))`。因此第一轮未观察任何帧时所有 gap 都为 `1`；每次 rerank
+4. `need-concept-vocab-v1` 从这些 preference sources 所引用的 exact medoid/source prototypes 中，只提取
+   canonical `tags` 和完整 `category_paths_cn`；首版不把 title 当作 Need，不做 LLM 改写或近义词合并。
+   概念 key 为 `(concept_type, normalized_text)`，使用 Unicode NFC + strip + exact dedup；tag 必须在 P3-02
+   train-only item vocabulary 至少覆盖 5 个不同 items，完整 category path 不设 minimum-df floor。只用该
+   train-only vocabulary 的静态 P2 item metadata 计算 document frequency，并产生
+   `idf(q)=log((N+1)/(df(q)+1))/log(N+1)`，概念初始 importance 为所有 supporting preference sources 的
+   `source_importance * idf(q)` 最大值，同时保留全部 supporting atom IDs。按 importance desc、concept type、
+   normalized UTF-8 text、atom IDs 确定性排序，只让前 32 个概念进入 visual comparison；`min_tag_df=5`、
+   `max_concepts=32`、P3 derived/train-vocabulary checksum、P2 static item-feature version 和 IDF recipe 均进入
+   immutable IDF artifact identity。Validation/test runtime 只读该 frozen artifact，不按当前 candidates、held-out
+   target、未来 behavior 或 test inventory 重算；P6 再做 8/16/32 与 df floor sensitivity；
+5. proxy encoder 固定为 `OFA-Sys/chinese-clip-vit-base-patch16` revision
+   `36e679e65c2a2fead755ae21162091293ad37834`。`need-query-template-zh-v1` 固定为 tag
+   `这段视频是否主要展示了「{concept}」相关内容？`、category
+   `这段视频是否属于「{concept}」相关内容？`，fallback 使用
+   `这段视频是否包含有助于区分当前候选的核心内容？`。模板只插入已规范化 concept，经同一
+   Chinese-CLIP text encoder 得到 L2-normalized 512-D query vector；不得把 BGE-M3 Memory vector 与
+   Chinese-CLIP image vector 做 cosine。P4 baseline 直接使用 raw normalized cosine，不做 per-query
+   P90/P99、z-score、null-state 或其他校准；必须记录 per-query frame/segment/candidate/Difference 分布，
+   calibration 作为 P6 显式对照实验；
+6. 每个 final segment 使用 P4-01 已确认的段内 `25% / 50% / 75%` 三张 proxy candidates。frame artifact
+   使用 pinned model 的 official processor（224×224 input），保存实际 timestamps/checksums 和同 revision
+   image encoder 产生的 FP32、L2-normalized 512-D vectors。目标帧无效时，令
+   `delta=min(250ms, 0.1*segment_duration)`，按 `0,-delta,+delta,-2delta,+2delta` 的固定 offset 顺序在段内寻找
+   最近 PTS frame，并去重；少于两张
+   有效、去重且通过黑帧/严重模糊/边界过滤的帧时，该 segment 为 `proxy_ineligible`，不能以零向量或零分
+   冒充。对 concept `q`、segment `s`，三帧分别做 cosine，`segment_relevance(s,q)` 为最高两帧的算术平均；
+7. 对当前 candidate `i`，将该 item 全部 proxy-complete segments 的 relevance 降序排列；至少两个 segment 时
+   `candidate_support(i,q)` 取最高两个 segment relevance 的算术平均，只有一个时取该值。它不取单一 max，
+   以降低 segment 数量不同带来的 multiple-comparisons advantage。已观察 segment 的 static proxy 仍可描述
+   候选内容差异；是否已经取得 Deep Evidence
+   只由后述 `evidence_gap` 表达，避免同时从 support 集合删除该 segment 而重复惩罚。没有任何 proxy-complete
+   segment 的 item 保留在 Top-100 ranking，但不参与 `candidate_difference`；
+8. 令 `E` 为当前 Top-100 中至少有一个 proxy-complete segment 的 candidates；先在完整 Top-100 上归一化
+   `u_i=(1/current_rank_i)/sum_j(1/current_rank_j)`，并计算 `proxy_rank_mass=sum_{i in E}u_i`。只有
+   `|E|>=2` 且 `proxy_rank_mass>=0.50` 时才允许 candidate-aware comparison；否则输出 typed fallback，缺媒体
+   candidates 不得以 support `0` 参加。Comparison 内再归一化
+   `w_i=(1/current_rank_i)/sum_{j in E}(1/current_rank_j)`，并定义：
+
+   ```text
+   candidate_difference(q)
+   = sum_{i<j} w_i*w_j*abs(candidate_support(i,q)-candidate_support(j,q))
+     / sum_{i<j} w_i*w_j
+   ```
+
+   因此全部可计算 Top-100 candidates 都参与，但高排名竞争者贡献更大；100 个候选最多 4,950 个 pair，
+   不设 Top-L 截断。只有 `candidate_difference(q)>=0.10` 的 concept 才进入最终 Need 排序；若全部 concepts
+   都低于该 floor，则输出 `general_candidate_relevance` fallback。`minimum_candidate_difference=0.10` 进入
+   recipe identity，P6 报告 sensitivity；
+9. 对 preference concept `q` 和当前 candidate `i`，若该 item 已有至少一个成功、且 acquisition metadata 引用 `q`
+   的 Deep Evidence，则 `coverage(i,q)=1`，否则为 `0`。成功要求 observation status/evidence ref 均合法，且
+   acquisition metadata 的 exact `concept_id`、query-template version 和 supporting atom IDs 与本 need 一致；
+   failed/empty perception 永远是 `0`。使用上一步完整 Top-100 evidence weight `u_i`，则
+   `evidence_gap(q)=sum_i u_i * (1-coverage(i,q))`。因此第一轮未观察任何帧时所有 gap 都为 `1`；每次 rerank
    后按新的完整 Top-100 ranks 重算，低排名 item 获得 Evidence 后若升到前列，其 coverage 会自动获得更高权重；
-5. `need_score(q)=preference_importance(q) * evidence_gap(q)`；每轮只输出最高分的一个 need，精确 tie 按
-   normalized need type、atom IDs 确定性打破；
-6. `top1_top2_margin` 只作为是否继续感知的 request-level uncertainty/stop signal，不重复乘入所有 query 的
+10. 对通过 `0.10` floor 的 concepts，
+   `need_score(q)=concept_importance(q) * candidate_difference(q) * evidence_gap(q)`；每轮只输出最高分的
+   一个 need，精确 tie 按 normalized need type、concept type/text、atom IDs 确定性打破；
+11. 输出中 `preference_importance=concept_importance`、`contrastiveness=candidate_difference`、
+   `evidence_gap=evidence_gap`，`embedding_ref` 指向 exact selected-query Chinese-CLIP text vector。
+   `metadata` 只保存最多 32 个 concept 的 aggregate diagnostics 和最终 Query 的最多 100 个 per-candidate
+   supports，以及 need score、query template/version、proxy model/artifact identity、eligible candidate count、
+   proxy rank mass 和 fallback reason；不保存 per-frame/per-segment tensors 或 raw frames。candidate IDs 只用于
+   诊断，不进入 item-agnostic concept/description；
+12. `top1_top2_margin` 只作为是否继续感知的 request-level uncertainty/stop signal，不重复乘入所有 query 的
    相对排序；raw SASRec logit 不解释为概率；
-7. Query 使用所选 atom 的规范化短文本；description 由固定 need-type 模板产生。P4-04 使用与 visual proxy
-   相容的 text encoder 临时编码 Query，不直接比较 BGE-M3 Memory embedding 与异空间视觉特征；
-8. 无可用 atom 时输出 `general_candidate_relevance` fallback；是否继续仍由 budget、eligibility 和 stop policy
-   决定；
-9. learned/multi-need/query-free estimator 留作 P6/P7 ablation；P4/P5 第一条主线保留显式 Query，以分离
+13. 无可用 atom/concept、`|E|<2`、`proxy_rank_mass<0.50`、全部 difference `<0.10` 或无法生成合法 query
+   vector 时输出 `general_candidate_relevance` fallback：`relevant_preference_atom_ids=()`，importance/gap/
+   contrastiveness 均为 `None`，使用固定 fallback query embedding，并在 metadata 写唯一 typed reason；是否继续
+   仍由 budget、eligibility 和 stop policy 决定；
+14. 每轮复用 immutable static proxy supports，但按新的 current ranks 重算 comparison/evidence weights 和
+   `evidence_gap`。已观察 segment 继续参与候选内容 support，却从 P4-04 action eligibility 中排除；同一 concept
+   可以在仍有未观察相关 segments 且 gap 未关闭时再次胜出，但同一 segment 不得重复观察。若没有 eligible
+   unobserved segment，由既有 typed stop 结束；
+15. learned/multi-need/query-free estimator 留作 P6/P7 ablation；P4/P5 第一条主线保留显式 Query，以分离
    “确认什么”和“去哪里看”。
 
-### 6.3 与 P4-04/P4-05 的已确认边界
+### 6.3 已关闭决策
+
+- concept 使用 Memory tags + full category paths；tag minimum train-vocabulary df=5、train-only static-metadata IDF、
+  exact dedup、排除 title、max 32；同一 atom 的 tags 不按数量平分 importance；
+- query 使用 `need-query-template-zh-v1` 固定模板；P4 使用 raw normalized cosine，calibration 延后 P6；
+- exact Chinese-CLIP revision、official processor、25/50/75 帧、确定性坏帧替换、FP32 L2 vectors 和少于两帧
+  fail-closed；
+- segment relevance 为 top-2-of-3 frame mean，candidate support 为 top-2 segment mean；
+- Top-100 proxy-complete comparison、reciprocal-rank pairwise difference、proxy rank mass 0.50 和 difference
+  floor 0.10；
+- successful query-tagged binary Evidence coverage、failed=0、逐轮 rank/gap 重算和 static proxy reuse；
+- compact public output、selected query embedding ref、typed fallback 以及 P4-03/P4-04 recomputation boundary。
+
+### 6.4 与 P4-04/P4-05 的已确认边界
 
 - Information Need 不选择 item 或 segment；多个视频符合同一 Query 时，由 P4-04 对完整 Top-100 全部 eligible
   segments 做全局比较并只选一个；
-- cheap proxy 方向采用每 segment 三张代表帧的离线 image-text embedding；Query 与三帧分别计算 cosine，
-  首版 segment relevance 取最高两帧相似度的平均；
+- P4-03 为最多 32 个 concepts 临时计算 aggregate scores，只发布最终 Query embedding 和 compact diagnostics。
+  P4-04 使用该 exact query embedding 与既有 segment proxy refs 确定性重算最终 Query 的 per-segment relevance；
+  允许重复这一次廉价点积以保持公共 schema 简洁，但不得换 query/model/template、重新抽帧或使用不同空间；
 - cheap proxy frames/embeddings 按 catalog item/segment 预计算并跨用户复用，不在每个请求中重新抽取；
 - 只有最终选中的一个 segment 进入 expensive path，按 P4-ARCH-01 的方向额外均匀抽取八帧供冻结 Deep
-  Segment Encoder；exact proxy model/revision、threshold、failure 和 frame decode contract 仍由 P4-04/P4-05
-  Decision Records 确认。
+  Segment Encoder；P4-04 仍需确认如何把已选 Query 的 relevance 与 rank/novelty 合成 Segment Value，P4-05
+  仍需确认 selected-segment uniform-8 decode/preprocess 和 exact Deep Encoder contract。
 
 ### P4-03 Decision Record
 
 ```text
 Decision ID: P4-03
 Status: Confirmed
-Decision: 每轮从 Dynamic Memory 的 stable/emerging/fading atoms 中按 `importance * evidence_gap` 选择一个显式、item-agnostic Query；importance 使用 strength 与 persistence 的温和乘法，evidence gap 使用完整当前 Top-100 的 reciprocal-rank-weighted query-tagged Evidence coverage。Query 由固定模板表达，P4-04 再以该 Query 全局比较全部 eligible segments。
-Rationale: 显式 Query 保留长短期 Memory 的决策作用，并把“确认什么”与“去哪里看”分离，便于解释、测试和后续 Segment Value 消融；完整 Top-100 加权 coverage 又允许低排名 item 在获取 Evidence 并重排后成为新的高权重竞争者。
-Alternatives considered: strength 直接等于 importance；strength 与 persistence 直接相乘；只看 Top-1/Top-2 evidence；先选 item 再选 segment；把全部兴趣直接交给 joint Segment Value；query-free learned policy；LLM 自由生成 Query。
-Affected schemas/interfaces: 复用现有 `InformationNeed`、`RecommendationState` 和 metadata；Evidence acquisition metadata 必须可关联 need/preference atom IDs；不修改 P1 Controller 顺序。
-Affected docs/tests: todo/phase_4_discussion.md；后续测试覆盖 long/short/stable importance、initial gap=1、Top-100 rank-weighted coverage、rerank 后 gap 重算、empty-Memory fallback、fixed-template Query、tie determinism 和无 future-feedback leakage。
-Deferred follow-up: P4-04 exact compatible CLIP/proxy model、three-frame artifact 和 relevance threshold；P4-05 selected-segment eight-frame/decode contract；P6 query-conditioned 对 query-free ablation；P7 learned/multi-need estimator。
+Decision: 2026-08-06 candidate-aware amendment 取代原 `importance * evidence_gap` 选择式。Need concepts 固定来自 Memory source prototypes 的 tags 和完整 category paths，排除 title/LLM/近义词合并；tag min-df=5，只用 P3 train-only item vocabulary 的静态 metadata 计算 normalized IDF，冻结到 exact derived/vocabulary/item-feature identity 后取 top-32，同一 atom 的 tags 不按数量平分 importance。`need-query-template-zh-v1` 经 pinned Chinese-CLIP text encoder 产生 512-D query vector，与每段 25%/50%/75% 的 FP32 L2 frame vectors 做 raw cosine；P4 不做 per-query calibration。Segment relevance 取 top-2 frame mean，candidate support 取 top-2 segment mean。Top-100 proxy-complete candidates 在 proxy rank mass>=0.50 且至少两个时，以 reciprocal-current-rank 加权两两绝对差得到 candidate difference；只保留 difference>=0.10 的 concepts。最终按 `concept_importance * candidate_difference * evidence_gap` 输出一个 item-agnostic Query；successful same-concept Deep Evidence 使用 binary coverage，失败为 0。P4-04 以 exact selected query embedding 重算该 Query 的 segment relevance，再选择具体 item/segment。
+Rationale: 原式第一轮所有 evidence gap 都为 1，会退化为复述最强 Memory 兴趣。Candidate-aware contrast 使 Need 回答“当前候选在哪个用户在意的维度上最不同”，同时保持 Query 与 item selection 分离。Top-2 aggregation 降低单帧和 segment-count 偶然极值，rank weighting 防止 tail 数量淹没领先候选，coverage mass/floor/fallback 防止缺媒体或微小数值噪声伪装成可行动差异。Raw-cosine baseline 简单可审计，校准留给有真实分布证据后的 P6 对照。
+Alternatives considered: 继续使用 `importance * evidence_gap`；title/LLM/近义词生成 concepts；只比较候选文本 BGE；直接比较 BGE-M3 与 visual vectors；per-query P90/P99/null calibration 进入 P4；只看 Top-1/Top-2 或固定 Top-L；100 candidates 等权；缺媒体记 0；candidate single max；无 contrast floor；先选 item 再生成 Query；query-free learned policy 或 joint Segment Value。
+Affected schemas/interfaces: 复用 `InformationNeed`、`RecommendationState`、`SegmentProxyRef` 和 metadata；`contrastiveness` 承载 candidate difference，`embedding_ref` 指向 selected Chinese-CLIP query vector，Evidence acquisition metadata 关联 concept/query-template/supporting atom IDs。新增 internal versioned concept resolver、query encoder/proxy artifact 和 compact diagnostics；不修改 P1 Controller 顺序，不在公共 State 内嵌 Tensor/raw frames/全量 per-segment scores。
+Affected docs/tests: todo/phase_4_discussion.md；docs/04_information_need.md；README.md；后续测试覆盖 train-only vocabulary/metadata/checksum IDF closure、禁止 validation/test/target/future inventory 重算、min-df/IDF/top-32/no-tag-count-normalization/template、exact model/processor/vector space、25/50/75 replacement/invalid-frame fail-closed、top-2 frame/segment aggregation、proxy rank mass、Top-100 reciprocal-rank pairwise difference、0.10 floor、binary successful coverage、initial gap=1、rerank recomputation、typed fallback、compact metadata、P4-04 exact-query recomputation、item-agnostic output 和无 future-feedback leakage。
+Resolved follow-up: candidate-aware Need、concept source/filter/cap、train-only IDF/no tag-count normalization、query templates、raw cosine/no P4 calibration、proxy frame contract、segment/candidate aggregation、Top-100 missingness/rank weighting、contrast floor、Evidence coverage、round-to-round semantics、fallback、public field mapping 和 P4-03/P4-04 boundary。
+Deferred follow-up: P4-04 Segment Value 组合式与 min value；P4-05 selected-segment uniform-8/Deep Encoder；P6 calibration、df/cap/aggregation/floor/text-only/query-free ablations；P7 learned/multi-need estimator。
 Confirmed by: User
 Date: 2026-08-06
 ```
@@ -582,19 +672,21 @@ cheap relevance / uncertainty / rank / coverage heuristic
 
 ### 7.2 推荐 baseline（待确认）
 
-1. 为每个 segment 离线生成固定、带版本的 image-text proxy embedding；使用与其兼容的 text encoder
-   临时编码 `InformationNeed` 文本。不要直接比较 BGE-M3 文本 embedding 与不在同一空间的视觉特征。
-2. 第一版使用 pinned、支持中文 text-image 对齐的轻量 encoder；具体模型在本 Gate 结合当前官方 model card
-   和租卡环境核验后确定。
+1. 继承 P4-03 已确认的 exact Chinese-CLIP proxy artifact 和 selected-query `embedding_ref`；P4-04 只为最终
+   Query 确定性重算各 eligible segment 的 top-2-of-3 relevance，不换模型/template、重新抽帧或比较 BGE-M3
+   与视觉向量。
+2. Proxy model/revision、official processor、frame eligibility 和 vector contract 不再是本 Gate 的研究变量；
+   本 Gate 只负责 Segment Value 组合、eligibility、threshold 和 trace。
 3. value 由透明的配置权重组合：
 
 ```text
-need–segment relevance
+selected-query segment relevance
 + current-rank priority
-+ ranking-uncertainty priority
-+ preference importance
 + optional evidence novelty
 ```
+
+   `preference importance` 和 `candidate difference` 已在 P4-03 选择 Query 时使用，P4-04 不重复乘入；
+   request-level ranking uncertainty 只进入 StopPolicy，不作为所有 segments 共有的相对排序常数。
 
 4. 全部输入在 prediction cutoff 可得；不使用 MLLM Evidence、future label、after ranking 或 actual gain。
 5. media/proxy eligibility、各分项和 final value 写入 `SegmentValue.metadata`，便于 trace 和 ablation。
@@ -603,10 +695,10 @@ need–segment relevance
 
 ### 7.3 需要确认
 
-- visual proxy model 与离线生成方式；
 - value 的加法/乘法形式和首版权重；
 - rank prior 在完整 Top-100 cheap search 中是否过强；
 - `min_segment_value` 的可解释范围；
+- optional evidence novelty 的 exact 定义；
 - random comparator 是否 P4 同步实现或留到 P6。
 
 ### P4-04 Decision Record
@@ -995,7 +1087,7 @@ Date: TBD
 | P4-00 | P3 handoff、范围、官方 split 训练前审计 | Confirmed |
 | P4-01 | media subset、segments、resource contract | Confirmed |
 | P4-02 | Top-100 recall/rerank、all-eligible cheap search、Top-1 output | Confirmed |
-| P4-03 | rule-based Information Need | Confirmed |
+| P4-03 | candidate-aware rule-based Information Need | Confirmed |
 | P4-04 | heuristic Segment Value | Pending |
 | P4-ARCH-01 | Deep Encoder + Small Reranker architecture amendment | Confirmed |
 | P4-05 | Deep Encoder、selected frames、artifact | Pending |
