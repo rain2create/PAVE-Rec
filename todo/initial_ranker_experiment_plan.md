@@ -72,6 +72,21 @@ SASRec 只使用 item-ID sequence，训练成本通常远低于视频下载、ML
 Oracle/Segment Value 数据生成；因此第一条 Tsinghua SASRec 训练不应成为完整 Agent Loop 的主要
 成本瓶颈。
 
+### 2.1 Required audit before reportable Tsinghua retraining
+
+当前 P3 checkpoint 使用项目自己构建并已做 cutoff/leakage 防护的 chronological leave-two-out split，
+可以继续承担 P4 第一条 Agent Loop 的工程输入。清华 processed recommendation package 另带
+`x_label=0/1/2` 官方 split；在任何可报告的清华 SASRec 重训或正式 benchmark 前，必须先：
+
+1. 固定 package 和交互文件 checksum、记录 train/validation/test counts；
+2. 审计三段 user/item overlap、cold-user/cold-item coverage；
+3. 能映射回原始 exposure 时检查每个用户的时间是否满足 train < validation < test；
+4. 根据审计结果决定该 split 可否进入 sequential robustness，还是只用于 static MMRec reproduction。
+
+官方论文声明的 8:1:1 本身不能证明 chronological。审计完成前，不得把该 split 直接用于 SASRec
+next-item、Dynamic Memory 或 Agent prefix，也不得用它替换当前已版本化的 chronological split。
+这项检查同时记录在 `benchmark_construction_proposal.md` 和 `phase_4_discussion.md` P4-00。
+
 ---
 
 ## 3. Shared Plugin Boundary
@@ -250,6 +265,7 @@ SASRec + Dynamic Memory
 SASRec + Random Perception
 SASRec + Relevance-only Perception
 SASRec + Full Perception
+Small Reranker with No Evidence
 PAVE-Rec
 Oracle
 ```
@@ -337,6 +353,7 @@ MicroLens-50K 只验证 pipeline；MicroLens-100K 才是完整第二主线。Mic
 
 - [ ] 新 ranker 不修改 `AgentController` 或公共 `InitialRanker` signature。
 - [ ] 每个 checkpoint 固定 dataset/split/vocabulary/model/training recipe identity。
+- [ ] 清华正式重训前完成官方 `x_label=0/1/2` split provenance、overlap/cold 和逐用户时序审计。
 - [ ] 不把其他数据集的 item embedding 当作 pretrained universal weights。
 - [ ] BERT4Rec `[MASK]` 是 model-local、non-rankable special ID。
 - [ ] 主指标使用相同 full-catalog candidate protocol；dev sampled candidates 不进论文主表。

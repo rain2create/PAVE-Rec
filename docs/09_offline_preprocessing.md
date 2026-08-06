@@ -478,6 +478,32 @@ ordering 全部通过后才返回。两个 Stores 与 resolver 共享同一个 L
 Agent run 不得分别选择 item release A 和 segment release B。不同 runs 可以固定不同
 release，file/range locator 也仍可在一个 release 内混合。
 
+### Phase 4 derived media-overlay amendment
+
+上述规则继续约束 P2 `FilesystemItemFeatureStore`、`FilesystemSegmentStore` 和两个独立
+processed releases，P1—P3 baseline/goldens 不改变。P4-01 另确认一个窄化、显式 selector：
+
+```text
+one exact base P2 LoadedRelease
+        +
+one exact derived media-overlay manifest bound to that release/item catalog
+        ↓
+MediaSubsetSegmentStore
+```
+
+Overlay 不是 `segment release B`，不包含 behavior、item features 或 labels，也不能从
+`latest`/path/mtime 猜 base。Manifest 必须引用 exact base ReleaseManifest 和 Item Store
+index/catalog identity，并用独立 inventory、size、SHA-256 和 safe root resolver 管理 media、
+segment 和 proxy refs。Store 同时验证 base `LoadedRelease` 与 overlay：只有 base catalog
+中的 item 合法；未被 overlay 覆盖的合法 item 返回 empty catalog；已声明但缺失/损坏的
+resource、cross-release/catalog mismatch、unknown item 或 segment/proxy coverage drift 必须
+fail closed，不能降级为空 catalog。
+
+P2 resolver 继续只解析其 LoadedRelease inventory，不能增加 bypass。P4 media resolver 只
+解析 overlay inventory。P4 runtime 的 exact artifact graph 同时记录 base release 和 overlay
+refs；`AgentRunResult.data_version` 仍表示 base P2 data version。旧 P2/P3 component selectors
+不得自动选择 overlay，原 tests/goldens/zero-budget runtime 必须 byte/semantic regression。
+
 Exact release ref 是唯一 portable release identity handoff，但不是自包含的 physical
 locator；root ID 到本机 path 的映射只能来自 trusted config。Preprocessing source
 ingestion 在 release 尚未存在时使用 validated root registry 和同一 path-safety core；

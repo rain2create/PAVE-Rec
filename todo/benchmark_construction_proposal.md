@@ -41,7 +41,7 @@ content-hash-pinned official public sampled release。若作者以后提供 full
 ```text
 Tsinghua ShortVideo
     → real SASRec / Dynamic Memory
-    → real MLLM loop
+    → Deep Segment Encoder + Small Multimodal Reranker loop
     → Tsinghua Oracle data
     → first supervised Segment Value Model
     → stabilize shared implementation
@@ -94,6 +94,7 @@ SASRec + Dynamic Memory
 SASRec + Random Perception
 SASRec + Relevance-only Perception
 SASRec + Full Perception
+Small Reranker with No Evidence
 PAVE-Rec
 Oracle
 ```
@@ -108,6 +109,7 @@ Oracle
 | Random Perception | TBD | TBD |
 | Relevance-only | TBD | TBD |
 | Full Perception | TBD | TBD |
+| Small Reranker with No Evidence | TBD | TBD |
 | PAVE-Rec | TBD | TBD |
 | Oracle | TBD | TBD |
 
@@ -150,7 +152,7 @@ PAVE-Rec 在 comment-engagement 任务上也有效，
 | 数据集 | 是否完整训练 PAVE-Rec | 具体含义 |
 | --- | --- | --- |
 | MicroLens-50K | 否，只做开发 | 用于 MicroLens adapter、下载/媒体处理、SASRec/Agent smoke test 和成本估算；不作为 100K 的正式 train/test，也不能假设与 100K 无用户或 item 重叠 |
-| MicroLens-1M | 全量 Cheap Path + 抽样 Agent | 全量训练/评价 SASRec、Memory 构建、candidate generation 和吞吐；只对固定 state/media subset 跑 MLLM、Oracle、Segment Value 和 Agent，避免 perception cost 随百万用户全量爆炸 |
+| MicroLens-1M | 全量 Cheap Path + 抽样 Agent | 全量训练/评价 SASRec、Memory 构建、candidate generation 和吞吐；只对固定 state/media subset 跑 Deep Encoder、Oracle、Segment Value 和 Agent，避免 perception cost 随百万用户全量爆炸 |
 | KuaiRec-small | 否，只做 gain/Score Updater calibration | 利用接近 fully observed 的 watch-ratio matrix 检查 before/after ranking gain、Score Updater 和 stop threshold；没有原视频，不能验证真实 segment selection 或 MLLM Evidence |
 | KuaiRand-Pure | 否，只做去偏/OPE/可选 RL | 利用随机曝光和 propensity/reward 信息研究 exposure bias、off-policy evaluation 和未来 offline-RL；其 action 是 item exposure/policy，不是视频 segment perception |
 
@@ -305,23 +307,25 @@ SASRec full-catalog top-100
 ```
 
 强制加入 target 的结果只证明 conditional reranking，不得替代 candidate retrieval
-结果。这里的 Top-100 是 item-level Agent/reranking pool；Phase 4/5 仍需通过 cheap Information Need/
-relevance/uncertainty signals 将昂贵搜索缩小到 Top-L items/segments，不能解释成 MLLM 默认感知 100 个
-视频的全部 segments。P3 full-catalog Top-100 不注入 target；只有单独命名的 conditional reranking
+结果。这里的 Top-100 是 item-level Agent/reranking pool；P4-02 已确认对其中全部 media/proxy-eligible segments 批量计算 cheap value，但昂贵路径每轮只深度编码全局 argmax 的一个 segment，不能解释成默认感知 100 个视频的全部 segments。P3 full-catalog Top-100 不注入 target；只有单独命名的 conditional reranking
 benchmark 才能注入并同时保留原始 Recall@100 ceiling。
 
 #### C3. Segment and Oracle Label
 
-第一版在所有主数据集使用统一的逻辑 segment 数，例如每个视频 `K = 8` 个等时长
-segment。Tsinghua 上游已经提供八段视觉特征，但真实 Perceiver 所需媒体仍通过显式
-media/segment refs 管理。
+P4-01 已确认第一条 Tsinghua 主 segmentation 使用 `scene-hybrid-v1`：pinned shot-boundary
+detector 先产生 raw shots，再以 semantic similarity、boundary confidence 和 duration rules
+合并/切分，形成数量可变但有上限的 perception segments。Official-100 audit 从 1.5—8 秒、
+每 item 最多 12 段开始；任何调整必须产生新 recipe/version。固定 `K = 8` 等时长 segment
+保留为 segmentation ablation，并可在需要跨数据集严格控制 segment 数时单独报告，不能与
+scene-based 主结果混用。Tsinghua 上游八段视觉特征只作独立 proxy/provenance 候选；真实
+Perceiver 所需媒体仍通过显式 media/segment refs 管理。
 
 对每个 sampled state 和未感知 segment：
 
 ```text
 before ranking
-    → fixed Teacher/MLLM perception
-    → fixed Evidence aggregation and Score Updater
+    → fixed Deep Segment Encoder / Evidence lookup
+    → frozen Small Candidate-aware Multimodal Reranker
     → after ranking
     → gain = metric(after) - metric(before)
 ```
@@ -333,8 +337,8 @@ primary:   delta NDCG@10
 secondary: delta MRR, delta target rank, top-1 flip, regret reduction
 ```
 
-负 gain 必须保留。Oracle artifact 必须记录 state、segment、Teacher/model/prompt、
-Evidence、Score Updater、before/after ranking、label 和成本版本。
+负 gain 必须保留。Oracle artifact 必须记录 state、segment、encoder/preprocess、Evidence、
+Small Reranker、before/after ranking、raw gain、cost 和 label 版本。
 
 Supervised Segment Value Model 只能读取 online 可用的 cheap features，不能读取
 Teacher Evidence、after ranking、future feedback 或 actual gain。
@@ -387,7 +391,7 @@ MicroLens 相关的三个规模必须保持不同职责，不能混成自然的 
 
 #### D1. MicroLens-50K — Development Only
 
-用于 MicroLens adapter、下载和媒体处理、SASRec/Agent smoke test、资源需求与 MLLM
+用于 MicroLens adapter、下载和媒体处理、SASRec/Agent smoke test、资源需求与 Deep Encoder/MLLM
 成本估算。它不进入正式主结果表，也不作为 100K 的训练集。除非通过 source audit
 明确证明，否则不能假设 50K 与 100K 用户或 item 无重叠。
 
@@ -407,13 +411,13 @@ D2c: MicroLens Oracle + supervised Segment Value + full Agent
 
 #### D3. MicroLens-1M — Full Cheap Path, Sampled Agent
 
-全量运行数据预处理、SASRec、Memory、candidate generation 和吞吐/存储评测；MLLM、
+全量运行数据预处理、SASRec、Memory、candidate generation 和吞吐/存储评测；Deep Encoder/MLLM、
 Oracle、Segment Value 与完整 Agent 只在固定、版本化的 state/media subset 上运行。
 
 原因是 perception 计算量近似：
 
 ```text
-number of states × candidate items × segments × Teacher/MLLM cost
+number of states × candidate items × segments × Deep-Encoder/Teacher cost
 ```
 
 因此 1M track 分别报告全量 Cheap Path 的质量/规模结果和 sampled Agent 的预算曲线，
@@ -512,9 +516,10 @@ new-item split；若 dataset 没有可靠 catalog availability 时间，只能�
 ```text
 P3: Tsinghua sampled adapter + derived sequence + SASRec + Dynamic Memory
 P4: official 1..100 media smoke → coverage-driven Tsinghua media subset
-    → real MLLM + heuristic Segment Value + Score Updater
+    → frozen Deep Encoder + heuristic Segment Value + Small Reranker
 P5: Tsinghua Oracle data + first supervised Segment Value Model
 P6: Tsinghua main evaluation + KuaiRec calibration + complete MicroLens PAVE-Rec replication
+    → MLLM-text + LLM Reranker system-level comparison
     → optional cold-item evaluation after main results
 P7: optional KuaiRand OPE/RL and M³L transfer
 ```
@@ -551,8 +556,8 @@ adapter/split/candidate recipe versions
 user/item vocabulary refs
 feature encoder versions
 model/checkpoint IDs
-Teacher/MLLM/prompt versions
-Score Updater and gain-label versions
+Deep Encoder/preprocess and optional Teacher/MLLM/prompt versions
+Small Reranker and gain-label versions
 seeds
 ranking and perception-cost metrics
 agent traces

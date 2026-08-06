@@ -1078,6 +1078,15 @@ required indexes、resource graph 和 source-item coverage，并返回共享的 
 也不要求 raw media 的 upstream `ResourceRef.version` 等于生成 artifacts 的
 `data_version`。
 
+P4-01 amendment（2026-08-05）：P2 baseline 和既有实现/测试继续保持上述单一
+`LoadedRelease` 规则。Phase 4 可显式选择一个新的 `MediaSubsetSegmentStore`，其输入是
+一个 exact base `LoadedRelease` 加一个只含 media/segments/proxies、并精确绑定该 release
+和 item-catalog identity 的 immutable derived overlay。它不是 processed segment release B，
+不得包含/替换 behavior、items 或 labels，也不得复用 P2 resolver 绕过 release inventory。
+未覆盖但属于 base catalog 的 item 返回 empty catalog；已声明资源缺失/损坏、unknown item、
+cross-release/catalog mismatch 或 segment/proxy coverage drift 均 fail closed。旧 selector、
+Filesystem Stores、resolver、goldens 和 P1—P3 runtime 不自动启用 overlay、语义不变。
+
 Exact `release_ref` 是唯一的 portable release-identity handoff，但不是自包含的物理
 locator。Root ID 到本机 path 的映射只能由受信任 config 提供，不能进入 ref 或 portable
 manifest。Preprocessing source ingestion 在 release 尚不存在时使用同一 path-safety core

@@ -177,12 +177,15 @@ cold/warm coverage。每个 case 只有一个 relevant target，因此 `Recall@K
 
 ```text
 full train vocabulary → SASRec ranking → Top-100 Agent candidates
-                                      → later smaller Top-L expensive search
+                                      → all eligible segments get cheap value
+                                      → one selected segment gets deep encoding
+                                      → rerank Top-100 → output Top-1
 ```
 
-这不要求后续 MLLM 感知全部 100 个 items；Phase 4/5 再确认进入 Segment Value/Perception 的
-item/segment shortlist。P3-02 development-only 的 `1 positive + 100 negatives = 101 candidates`
+这不要求后续深度编码或 MLLM 对比支线感知全部 100 个 items；P4-02 已确认只对全部 eligible segments 做 cheap value，昂贵路径每轮只编码全局 argmax 的一段。P3-02 development-only 的 `1 positive + 100 negatives = 101 candidates`
 只用于 smoke/CI，不是 full-catalog Top-100 handoff，不得进入正式结果。
+
+当前 SASRec 初排不读取 Dynamic Memory、semantic BGE embedding 或任何 segment Evidence。它只消费 cutoff-safe item-ID sequence，并使用自己的 trainable Item-ID embeddings/sequence hidden state。Memory 与 SASRec 先在 Recommendation State 汇合，再由 Information Need、Segment Value 和 Small Candidate-aware Multimodal Reranker 消费；这保证 SASRec-only baseline 可解释，也让 Memory 的最终增益能独立消融。Memory-aware retrieval/fusion 留给 Phase 7，不属于当前粗召回。
 
 Phase 3 minimum comparator 是 train-only MostPop。第一条真实 Agent pipeline 使用 seed
 `20260804`；可报告的 stochastic ranker result 至少使用固定 seeds `20260804/05/06`，每个

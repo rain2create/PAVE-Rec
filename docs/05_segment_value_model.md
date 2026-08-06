@@ -181,7 +181,7 @@ new ranking
 measure recommendation gain
 ```
 
-Potential label components：
+辅助诊断 label components：
 
 ```text
 ΔNDCG
@@ -192,11 +192,13 @@ Potential label components：
 regret reduction
 ```
 
-精确定义当前：
+V1 主标签已确定为：
 
-```text
-TBD
-```
+\[
+y_{i,j}=\log p_{after}(i^*)-\log p_{before}(i^*)-\lambda C_{i,j}
+\]
+
+其中 `before` 与 `after` 必须由同一冻结版本的 Deep Segment Encoder + Small Candidate-aware Multimodal Reranker 计算；两次都从固定 SASRec base scores 与完整当前 EvidenceState 纯函数式重算。artifact 中分开保存 raw gain 与 cost，训练时再组合，以便重画不同成本权重的 budget curve。ΔNDCG、ΔMRR、rank change 作为辅助分析，不作为第一版唯一 label。
 
 ---
 
@@ -209,10 +211,10 @@ for state in sampled_recommendation_states:
     for unobserved_segment in candidate_segments:
         before = evaluate_ranking(state)
 
-        evidence = oracle_or_mllm_perceive(unobserved_segment)
+        evidence = load_or_encode_deep_segment_evidence(unobserved_segment)
         new_state = simulate_update(state, evidence)
 
-        after = evaluate_ranking(new_state)
+        after = frozen_small_reranker(new_state)
 
         gain = compute_gain(before, after)
 
@@ -224,6 +226,8 @@ for state in sampled_recommendation_states:
 ```
 
 因为这一步可能计算昂贵，所以应该 offline 完成。
+
+必须先按 user/time 划分数据，再在各 split 内生成 observation states、deep evidence cache 与 value labels；同一基础 case 的反事实 variants 不得跨 split。target 只用于 offline label 构造，不进入 online Value Model 输入。
 
 ---
 
@@ -251,11 +255,7 @@ Mock model
 
 ## 10. Loss
 
-当前保留：
-
-```text
-TBD
-```
+V1 先支持 pointwise regression 到上述 expected-gain label，并增加同一 Recommendation State 内的 pairwise ordering loss；具体权重由 validation-only tuning 决定。
 
 可以预留：
 

@@ -26,6 +26,10 @@ Staging and orphan bundles remain undiscoverable until a valid release exists.
 Runtime pins a complete release by its full data version and checksum, loads its
 indexes once, and never infers a current version from directory contents or mtime.
 The portable release ref is resolved through a trusted validated root registry; it
-does not contain a machine path. One Agent run uses one processed release for both
-item features and segment catalogs; separate runs may intentionally pin different
-releases.
+does not contain a machine path. The P1—P3 filesystem baseline uses one processed
+release for both item features and segment catalogs; separate runs may intentionally
+pin different releases. P4 may explicitly replace only the Segment Store with one
+immutable derived media overlay that is exact-bound to that same base release and
+item-catalog identity. The overlay is not a second processed release, cannot carry
+behavior/items/labels, and uses a separate inventory-verifying resolver. Arbitrary
+cross-release mixing remains forbidden.

@@ -3,7 +3,7 @@
 
 ## 1. 项目目标 Project Goal
 
-构建一个在 **MLLM 感知预算有限** 的条件下进行主动多模态感知的 Agentic Recommender。
+构建一个在 **深度视频感知预算有限** 的条件下进行主动多模态感知的 Agentic Recommender。
 
 系统不应该在推荐开始前就完整理解所有候选视频，而应该：
 
@@ -11,9 +11,9 @@
 2. 使用传统序列推荐模型，以较低成本得到初始排序 `Cheap Initial Ranking`。
 3. 检查当前推荐状态 `Recommendation State`，判断当前排序还缺什么信息。
 4. 预测哪个未观察视频片段 `segment` 最有可能改善当前推荐决策。
-5. 只把昂贵的 MLLM 感知预算花在这个片段上。
-6. 将新的多模态理解结果转化为结构化推荐证据 `Recommendation Evidence`。
-7. 更新 item score 并重新排序。
+5. 只对这个片段运行冻结的 Deep Segment Encoder，得到可引用的 latent Evidence。
+6. 由 Small Candidate-aware Multimodal Reranker 同时读取 SASRec prior、Memory 和当前 Evidence。
+7. 对整个候选集合重新打分；MLLM 文本 Evidence + LLM Reranker 作为系统级对比支线。
 8. 重复上述过程，直到排序已经足够确定，或者感知预算耗尽。
 
 整体核心 loop：
@@ -35,11 +35,11 @@ Final      Segment Value Model
 Ranking          ↓
           select (item, segment)
                  ↓
-          MLLM Perception
+       Deep Segment Encoder
                  ↓
-          Evidence Update
+       Latent Evidence Update
                  ↓
-          Score Update
+   Small Multimodal Reranker
                  ↓
               Re-rank
                  ↓
@@ -76,19 +76,20 @@ Cheap path 包括：
 
 Expensive path 包括：
 
-- 只对被选中的 segment 运行 MLLM perception
+- 只对被选中的 segment 运行冻结 Deep Segment Encoder
+- 在 LLM 对比支线中，才对同一选中 segment 运行 MLLM 文本感知
 
 ### 2.3 Perception 与 Ranking 分离
 
-MLLM 的主要职责应该是输出：
+主线 Deep Segment Encoder 的职责是输出：
 
 ```text
-Structured Recommendation Evidence
+Latent Segment Evidence reference
 ```
 
-而不是直接输出最终 recommendation score。
+Small Candidate-aware Multimodal Reranker 实现既有 `ScoreUpdater`，从固定 SASRec base scores 与完整当前 EvidenceState 纯函数式重算全部候选分数。
 
-除非后续专门做 ablation，否则 V1 不应该让 MLLM 直接完成最终排序。
+MLLM 结构化文本 Evidence + LLM Reranker 是后续强对比，不是主线依赖；两条分支均不得让感知模型直接读取 held-out target。
 
 ### 2.4 V1 先把整个 loop 跑通
 
@@ -255,11 +256,11 @@ Segment Value Model
         ↓
 Best (item, segment)
         ↓
-MLLM Perception
+       Deep Segment Encoder
         ↓
-Structured Evidence
+Latent Evidence Ref
         ↓
-Score Update
+Small Candidate-aware Reranker
         ↓
 Rerank
 ```
@@ -385,6 +386,7 @@ while True:
 - `todo/phase_1_discussion.md`
 - `todo/phase_2_discussion.md`
 - `todo/phase_3_discussion.md`
+- `todo/phase_4_discussion.md`
 
 `todo/` 中的内容用于逐项讨论，并不自动代表已经确认的研究或实现决策。
 

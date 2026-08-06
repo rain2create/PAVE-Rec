@@ -1,9 +1,11 @@
-# Module 06 — Expensive MLLM Segment Perception
-# 昂贵片段感知模块
+# Module 06 — MLLM Text-Evidence Comparison Branch
+# MLLM 文本证据对比支线
+
+> Architecture amendment (2026-08-05): P4/V1 最终主线的 `SegmentPerceiver` 由冻结 Deep Segment Encoder 实现，输出 latent Evidence reference，并交给 Small Candidate-aware Multimodal Reranker。本文保留的 MLLM structured-text 路径属于 Phase 6 system-level comparison/可选语义增强，不再是 P4 主线依赖。公共 Protocol、failure、artifact 和安全边界仍可复用。
 
 ## 1. 模块目标 Purpose
 
-只有在 Agent 已经选出高价值 segment 后，才调用昂贵 MLLM。
+只有在 Agent 已经选出高价值 segment 后，对比支线才调用昂贵 MLLM。
 
 MLLM 的职责是：
 
@@ -135,8 +137,7 @@ Inspect this segment and extract recommendation-relevant evidence.
 Return structured JSON.
 ```
 
-Phase 4 的第一条真实 MLLM baseline 不要直接要求 MLLM 完成整个 ranking
-decision；Phase 1 不调用真实 MLLM。
+LLM 对比支线不要求 MLLM 直接完成 ranking decision；它先生成结构化文本 Evidence，再由 LLM Reranker 对候选集合排序。Phase 4 主线和 Phase 1 mock runtime 都不依赖真实 MLLM。
 
 ---
 
@@ -161,7 +162,7 @@ class EvidenceParser:
 
 ## 8. Cost Logging
 
-本节是路线图 Phase 4 接入真实 MLLM 后的要求。Phase 1 的 Mock Perceiver 不增加
+本节是路线图 Phase 6 接入 MLLM 对比支线后的要求。Phase 1 的 Mock Perceiver 不增加
 frame/token/latency/cost placeholder 字段，也不把这些字段塞入
 `PerceptionResult`、State 或 Trace。
 

@@ -40,28 +40,30 @@ stable / emerging / fading update
 
 第一阶段可以先 offline 或 simulated。
 
-### Stage 4 — Build Real Active-Perception Baseline
+### Stage 4 — Build Deep-Evidence Small-Reranker Baseline
 
-在调用真实 MLLM 前先建立：
+建立第一条真实正预算主线：
 
 - Rule-based Information Need baseline
 - heuristic/relevance-based Segment Value baseline
-- Information-Need-aware MLLM Perceiver
-- structured Evidence parser/aggregation
-- explainable residual Score Updater
+- frozen Deep Segment Encoder `SegmentPerceiver`
+- latent Evidence refs/aggregation
+- balanced Observation State dataset
+- Small Candidate-aware Multimodal Reranker `ScoreUpdater`
+- No-Evidence capacity baseline、zero/shuffled/mask/permutation sanity checks
 - score/stop compatibility and perception-cost artifacts
 
 该阶段提供第一条可运行 baseline，不宣布最终 Information Need、Segment Value 或
-Score Update 研究方案。
+Stop Policy 研究方案；Small Reranker 是当前主线的第一版可训练 ScoreUpdater。
 
-### Stage 5 — Build Oracle/Teacher Perception Data
+### Stage 5 — Build Counterfactual Segment-Value Data
 
 对 sampled recommendation state 和 segment：
 
-- perceive segment
-- obtain evidence
-- update ranking
-- calculate actual recommendation gain
+- 冻结 exact Deep Segment Encoder 与 Small Reranker
+- 加载或编码该 segment 的 latent Evidence
+- 从固定 SASRec base + 完整 EvidenceState 重算 before/after ranking
+- 保存 `Δ log p(target)`、cost 与辅助 rank metrics
 
 ### Stage 6 — Train Segment Value Model
 
@@ -72,14 +74,9 @@ state + information need + cheap segment proxy
 → expected recommendation gain
 ```
 
-### Stage 7 — Optional Learned Score Updater / Reranker
+### Stage 7 — LLM Reranker System-level Comparison
 
-Phase 4 的 explainable residual baseline 足以支撑第一条完整 loop。只有 baseline evaluation
-证明需要 learned/unified update 时才进入本 Stage；其具体设计当前：
-
-```text
-TBD
-```
+在主线稳定后，用相同选中 segments 比较 latent Evidence + Small Reranker 与 MLLM text Evidence + LLM Reranker。若比较两条端到端 selector，则分别用各自冻结 downstream reranker 生成 labels 并训练 branch-specific Segment Value Model；同时报告 matched/native frames、FLOPs、tokens、latency 与效果。
 
 ### Stage 8 — Integrate End-to-End Agent
 
@@ -108,15 +105,19 @@ Primary metric 是 `NDCG@10`；secondary metrics 是 `HR@10`、`NDCG@20`、
 train vocabulary、seen-positive filtering 和 repeated-target exception；cold targets 不注入
 scorer，单独进入 all-target retrieval coverage/counts。
 
+由于任务是 single-target next-item，Agent 的 stop/value 决策采用 Top-1-centric protocol，并把 `HR@1 / Top-1 Accuracy`、Top-1/Top-2 normalized margin 和目标 item log-probability 作为关键 Agent 指标；标准推荐主表仍保留 NDCG@10 等 listwise 指标。raw SASRec/reranker logits 未校准，margin threshold 只能在 validation 上确定。
+
 ```text
 full catalog
     → Initial Ranker
     → ordered Top-100 items
     → later Agent candidate pool
-    → Phase 4/5 selects a smaller expensive Top-L item/segment space
+    → cheap value over all media/proxy-eligible segments
+    → deep encode one selected segment
+    → rerank Top-100 and output Top-1
 ```
 
-`Recall@100` 衡量 target 是否进入后续 Agent pool，不表示 MLLM 感知全部 100 个 items。
+`Recall@100` 衡量 target 是否进入后续 Agent pool，不表示深度编码或 MLLM 对比支线感知全部 100 个 items。
 Development-only `1 positive + 100 negatives = 101 candidates` 只用于 smoke/CI，不是该
 Top-100 handoff，也不进入 research table。MostPop 与 SASRec 是 Phase 3 minimum real-data
 comparators；第一条真实 pipeline 使用 seed `20260804`，正式 stochastic result 至少使用
@@ -130,7 +131,7 @@ comparators；第一条真实 pipeline 使用 seed `20260804`，正式 stochasti
 
 ```text
 ranking quality vs number of perceived segments
-ranking quality vs MLLM token cost
+ranking quality vs deep encoder FLOPs / MLLM token cost
 ranking quality vs frames processed
 ranking quality vs latency
 ```
@@ -166,6 +167,8 @@ Proposed Segment Value Model
 Oracle segment selection
 ```
 
+`All-Segment` 只能作为 full-information reference，不保证是上界；同预算枚举得到的 Oracle Segment 才是 selection upper bound。必须同时报告 conditional reranking（target 已被召回）和 end-to-end retrieval + reranking；validation/test 不做 target injection。
+
 这一组对比用于证明：
 
 ```text
@@ -186,6 +189,7 @@ w/o Information Need
 w/o Segment Value Model
 w/o Active Stop
 w/o Evidence Update
+Small Reranker with No Evidence
 fixed-frame perception
 full-video perception
 ```

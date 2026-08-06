@@ -11,6 +11,8 @@ Current files:
 - `phase_2_discussion.md`: ordered Phase 2 data and Store decision checklist.
 - `phase_3_discussion.md`: ordered real Cheap Path, User Memory, and SASRec
   decision checklist.
+- `phase_4_discussion.md`: ordered real active perception, Deep Segment Evidence, and
+  Small Candidate-aware Multimodal Reranker decision checklist.
 - `benchmark_construction_proposal.md`: non-normative cross-phase proposal for
   sequential, Segment Value, auxiliary, and cross-dataset benchmarks.
 - `initial_ranker_experiment_plan.md`: companion plan for the pluggable Initial
