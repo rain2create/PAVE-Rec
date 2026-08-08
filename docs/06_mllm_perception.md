@@ -1,7 +1,10 @@
 # Module 06 — MLLM Text-Evidence Comparison Branch
 # MLLM 文本证据对比支线
 
-> Architecture amendment (2026-08-05): P4/V1 最终主线的 `SegmentPerceiver` 由冻结 Deep Segment Encoder 实现，输出 latent Evidence reference，并交给 Small Candidate-aware Multimodal Reranker。本文保留的 MLLM structured-text 路径属于 Phase 6 system-level comparison/可选语义增强，不再是 P4 主线依赖。公共 Protocol、failure、artifact 和安全边界仍可复用。
+> Architecture amendment (2026-08-07): P4-ARCH-02 主线由 `SegmentPerceiver` 发布 selected raw-frame Evidence，
+> 再由约 8B native-frame MLLM `ScoreUpdater` 通过 scoring head 直接输出 Top-100 logits。本文保留的
+> structured-text Evidence + generative/token-ranking LLM 路径只属于 Phase 6 representation/explanation comparator；
+> 它不是主线 Reranker 的实现方式。公共 Protocol、failure、artifact 和安全边界仍可复用。
 
 ## 1. 模块目标 Purpose
 
@@ -137,7 +140,8 @@ Inspect this segment and extract recommendation-relevant evidence.
 Return structured JSON.
 ```
 
-LLM 对比支线不要求 MLLM 直接完成 ranking decision；它先生成结构化文本 Evidence，再由 LLM Reranker 对候选集合排序。Phase 4 主线和 Phase 1 mock runtime 都不依赖真实 MLLM。
+Structured-text 对比支线先生成文本 Evidence，再由独立 LLM 对候选集合排序。Phase 4 主线则直接使用
+native-frame MLLM scoring head，不经过本文的文本 Evidence schema；Phase 1 mock runtime 仍不依赖真实模型。
 
 ---
 

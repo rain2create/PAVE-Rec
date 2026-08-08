@@ -62,13 +62,14 @@ failed
 metadata；Recommendation State 中的 observation 和 unobserved segment
 列表都是 Builder 构造的只读派生快照。
 
-State 和 Score Updater 只消费轻量 Evidence metadata/ref。媒体、raw frames 和 latent token values
+State 和 Score Updater 只消费轻量 Evidence metadata/ref。媒体、raw frames、selector tokens 和 model outputs
 存在受控 artifacts/Store 中，并通过 reference 关联，不内嵌公共 State/Trace。
 
-P4-06 已确认每个成功 segment 对应一个 content-addressed latent bundle：manifest 闭包绑定 FP32
-`frame_tokens[F,512]`（2—8帧）payload、mask/timestamps/checksums 和 exact encoder/preprocess/sampling identity。
-`Evidence.embedding_ref` 指向 manifest；latent baseline 的 `text_summary`、`confidence`、`raw_output_ref` 为空。
-Acquisition Need/step 记录在 Evidence event metadata，content artifact 本身保持 user/query independent。
+P4-ARCH-02/P4-06 已确认每个成功 segment 对应一个 content-addressed selected raw-frame bundle：manifest
+闭包绑定 2—8 张 canonical RGB frames、mask/timestamps/checksums 和 exact sampling/codec identity。
+`Evidence.raw_output_ref` 指向 frame manifest；`Evidence.embedding_ref` 仅在存在 exact model-specific derived
+visual tokens 时使用。`text_summary`、`confidence` 为空。Acquisition Need/step 记录在 Evidence event metadata，
+content artifact 本身保持 user/query independent。
 
 ---
 
@@ -110,15 +111,16 @@ append evidence
 update compact evidence/segment/frame-count inventory
 ```
 
-它不对 frame tokens 求 mean/max，也不合并同 item 的多个 segment；`evidence_embedding_ref=None`。
-P4-07 Small Reranker 从 action-ordered per-segment refs 加载 tokens 并负责 learned aggregation。
+它不对 frames/tokens 求 mean/max，也不合并同 item 的多个 segment；`evidence_embedding_ref=None`。
+P4-07 native-frame MLLM Reranker 从 action-ordered per-segment frame refs 加载自己的 native visual inputs。
 Failed perception 只进入 ObservationState 和 cost/failure sidecar，不产生 Evidence、不调用 ScoreUpdater。
 
 ---
 
-## 4. Score Update — 当前尚未最终确定
+## 4. Score Update — P4-ARCH-02 confirmed direction
 
-目前保留两个主要方向。
+下方 residual/unified 形式作为历史接口解释保留；当前 proposed mainline 是约 8B native-frame MLLM
+Candidate Reranker + shared scalar scoring head。
 
 ### Option A — Residual Update
 
@@ -165,7 +167,31 @@ new score
 - 更灵活
 - 可以做 richer fusion
 
-当前工程需要支持统一 interface，但不要替研究设计做最终选择。
+无论内部使用 residual 或 unified hidden-state fusion，外部仍使用统一 `ScoreUpdater` interface。
+
+### Active native-frame MLLM direction
+
+```text
+SASRec user/prior + Dynamic Memory
++ Top-100 compact candidate metadata
++ action-ordered observed raw-frame Evidence
++ acquisition Query/step
+        ↓
+7—9B native-frame MLLM
+        ↓
+candidate marker hidden states
+        ↓
+shared scalar scoring head
+        ↓
+100 numeric logits
+```
+
+- MLLM 只观看已选择/观察 segments，不观看 Top-100 全部候选视频；
+- 输出是 scoring head tensors，不通过自然语言/JSON 生成数字；
+- Candidate serialization 在训练中随机化并显式提供 original rank/identity；
+- 首个 baseline 保留 initial SASRec prior，并从 initial prior + full EvidenceState 纯函数式重算；
+- No-Evidence state 必须接近 SASRec prior；mismatched/shuffled frame-query pairs 用作训练/诊断；
+- exact model、native frame packing、LoRA/QLoRA modules、loss、context 和 calibration 由 P4-07 确认。
 
 ---
 
@@ -190,18 +216,19 @@ Implementations：
 MockScoreUpdater
 ResidualScoreUpdater
 UnifiedEvidenceRanker
+NativeFrameMllmScoreUpdater
 ```
 
-第一版端到端 loop 只要求：
+P1 deterministic loop 只要求：
 
 ```text
 MockScoreUpdater
 ```
 
-P4-ARCH-01 已确认主线使用 Small Candidate-aware Multimodal Reranker，而不是 MLLM residual rule。
-P4-07 仍需确认 exact frame/segment aggregator、network capacity、training objective、score calibration、
-未观察 item prior 与 StopPolicy compatibility。无论具体网络如何，每轮必须从固定 initial SASRec prior +
-完整当前 EvidenceState 重算全部 candidates，不能递归累计 previous scores。
+P4-ARCH-02 已确认主线使用 native-frame MLLM Candidate Reranker。P4-07 仍需确认 exact model/revision、
+candidate scoring head、Observation State training data、LoRA/QLoRA、loss、score calibration、未观察 item prior
+与 StopPolicy compatibility。无论具体模型如何，每轮必须从固定 initial SASRec prior + 完整当前
+EvidenceState 重算全部 candidates，不能递归累计 previous scores。
 
 ---
 
@@ -241,9 +268,10 @@ SASRec prior
 
 ## 8. TBD
 
-- P4-07 exact Small Reranker architecture/capacity
-- learned frame/multi-segment Evidence aggregation
-- evidence embedding method
-- training targets
+- P4-07 exact 7—9B MLLM/revision/license/GPU profile
+- native frame count/resolution/packing and multiple-Evidence context budget
+- candidate-marker scoring head and prior-preserving score contract
+- Observation State data proportions、hard negatives and training targets
+- LoRA/QLoRA/vision-freeze modules and loss/calibration
 - whether evidence changes only the selected item's score or all candidates
-- P6 pooled/aggregate-ref comparator
+- P6 Small-latent/3B/8B/full-tune and joint-training comparators

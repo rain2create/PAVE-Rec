@@ -3,8 +3,9 @@
 Status: `In Discussion`
 
 本文档用于逐项确认 Phase 4 的研究与工程边界。它继承已经完成的 P1–P3，目标是尽快跑通
-第一条真实的正预算 Agent Loop：真实 Recommendation State 产生 Information Need，选择真实视频
-片段，按需提取 latent Segment Evidence，再由 Small Candidate-aware Multimodal Reranker 更新整个候选排序。MLLM 文本 Evidence + LLM Reranker 作为后续系统级对比支线。
+第一条真实的正预算 Agent Loop：真实 Recommendation State 产生 Information Need，选择真实视频片段，
+发布 selected raw-frame Evidence，再由约 8B 的 native-frame MLLM Candidate Reranker 更新整个候选排序。
+最终 learned Segment Value 由不超过约 1B 的多模态 Selector 实现；P4 的 Query-relevance 规则只作为 bootstrap。
 
 本文件中的“推荐 baseline”在用户确认前都只是 proposal。只有对应 Gate 的 Decision Record
 变为 `Confirmed` 后才授权实现；未确认选择不能因为实现方便被写死。
@@ -26,11 +27,11 @@ P3 Dynamic Memory + SASRec Top-100 prior
                   ↓
        select one (item, segment)
                   ↓
-   frozen deep segment encoder
+   selected raw-frame publisher
                   ↓
-     versioned latent Evidence ref
+     versioned frame Evidence ref
                   ↓
- candidate-aware multimodal rerank
+ native-frame MLLM candidate rerank
                   ↓
           stop or repeat
 ```
@@ -51,23 +52,23 @@ Phase 4 的完成含义是“真实昂贵路径工程 baseline 可运行、可�
 
 ### 1.3 本阶段明确不做
 
-- 不训练 supervised Segment Value Model；其 Oracle、gain label、architecture 和 loss 属于 P5；
+- 不在 P4 训练最终多模态 Segment Selector；其 counterfactual gain data、architecture 和 loss 属于 P5；
 - 不声称 heuristic Segment Value 就是论文最终 PAVE-Rec；
 - 不做最终多数据集、三 seed、完整 ablation 和显著性主表；它们属于 P6；
 - 不在 P4 同步复制 MicroLens 主线；第一条真实闭环只使用 Tsinghua；
-- 不做 learned Information Need、Memory-aware initial retrieval/fusion、joint training 或 RL；
+- 不做 learned Information Need、Memory-aware initial retrieval/fusion、Selector/Reranker joint training 或 RL；
 - 不解决 cold/OOV target；后期冷启动 track 已记录在 Initial Ranker 计划；
 - 不把 held-out target、未来 feedback、Oracle gain 或评价标签输入 online Agent；
-- 不因接入真实 Deep Encoder/Small Reranker 而改写 P1 Controller 的 selection、budget 或 state transition 顺序。
+- 不因接入 raw-frame Perceiver/native-frame MLLM Reranker 而改写 P1 Controller 的 selection、budget 或 state transition 顺序。
 
 ### 1.4 P4 与 P5/P6 的边界
 
 | 能力 | P4 | P5 | P6 |
 | --- | --- | --- | --- |
 | Information Need | 第一条 rule-based baseline | 固定后用于造 Oracle state | ablation / tuning |
-| Segment selection | 非学习式 heuristic | supervised expected-gain model | 主实验与消融 |
-| Perception / Evidence | 冻结 Deep Encoder + latent ref | 固定用于反事实 label generation | encoder 与 MLLM-text 对比 |
-| Score Update | Small Candidate-aware Multimodal Reranker | 冻结后定义 actual gain | 正式评价、容量控制与校准 |
+| Segment selection | Query-relevance bootstrap | ≤1B multimodal expected-gain Selector | 主实验、规模/压缩/联合训练消融 |
+| Perception / Evidence | selected raw-frame bundle + model-native visual path | 固定用于反事实 label generation | frame/token/cost ablations |
+| Score Update | 约 8B native-frame MLLM Candidate Reranker | 冻结后定义 actual gain | 正式评价、容量控制与校准 |
 | 数据范围 | Tsinghua media smoke + fixed subset | Tsinghua Oracle subset | Tsinghua 主线、MicroLens 第二主线及辅助集 |
 
 ---
@@ -82,9 +83,9 @@ P4-01  Media subset、segment 和资源契约
 P4-02  Agent candidate/search-space protocol
 P4-03  Rule-based Information Need
 P4-04  Heuristic Segment Value
-P4-05  Deep Segment Encoder、selected-segment frames 和 artifact contract
-P4-06  Latent Evidence、failure 和 public-ref 边界
-P4-07  Small Candidate-aware Multimodal Reranker
+P4-05  selected-segment raw frames 和 artifact contract
+P4-06  Frame Evidence、failure 和 public-ref 边界
+P4-07  Native-frame MLLM Candidate Reranker
 P4-08  Runtime、budget、failure、cache、cost 和 replay
 P4-09  Evaluation、tests 和 Definition of Done
 P4-XG-01 跨 Gate 一致性审计
@@ -100,7 +101,7 @@ P4-XG-01 通过前不开始整体主体实现；不依赖后续选择的 audit/f
 2. 所有可选未观察 segment 在公共 `SegmentValueModel` contract 下得到一一对应输出；Controller
    仍按 `(value desc, item_id, segment_id)` 确定性选择。
 3. 只有最终选择的一个 segment 进入一次昂贵 `SegmentPerceiver.observe()`。
-4. Deep Encoder 只产生 latent Evidence；MLLM 对比支线也不得绕过 downstream reranker。
+4. 最终选择的 segment 只发布 canonical raw-frame Evidence；约 8B MLLM Reranker 原生读取这些帧并输出候选分数。
 5. ScoreUpdater 每轮从固定 SASRec prior + 完整当前 EvidenceState 重算全部候选，不能删除候选或递归累计旧分数。
 6. 一次 `observe()` attempt 消耗一个 action；实际模型调用、frames、tokens、latency 另作成本记录。
 7. failed perception 不产生 Evidence、不改变 score，但会留下 observation 和 cost/failure record。
@@ -272,6 +273,93 @@ Affected docs/tests: README、docs/01/02/05/06/10、active reranker spec、roadm
 Deferred follow-up: exact encoder/revision、reranker capacity、thresholds 与 P4-03—P4-09 逐项决定；candidate/search protocol 已由 P4-02 解决。
 Confirmed by: User
 Date: 2026-08-05
+```
+
+---
+
+## 3B. P4-ARCH-02 — Multimodal Selector + Native-frame MLLM Reranker Amendment
+
+Status: `Confirmed`
+
+本修订根据 2026-08-07 与教授讨论后的研究方向，取代 P4-ARCH-01 的“frozen Chinese-CLIP Deep Encoder +
+Small Candidate-aware Multimodal Reranker”主线。P1 Controller、Top-100、Information Need、全局
+`SegmentValueModel`/`ScoreUpdater` 接口、action budget 和 failure/replay 原则保持不变。
+
+### 已确认新主线
+
+```text
+Dynamic Memory + SASRec Top-100 prior
+              ↓
+Recommendation State
+              ↓
+Information Need / Query
+              ↓
+P4 Query-relevance bootstrap
+or P5 ≤1B Multimodal Segment Selector
+              ↓
+select one (item, segment)
+              ↓
+canonical selected raw-frame bundle
+              ↓
+~8B native-frame MLLM Candidate Reranker
+              ↓
+Top-100 scores and stop-or-repeat
+```
+
+1. 最终 proposed Segment Value Model 是不超过约 1B 的判别式多模态 Selector，而不是生成文本的 MLLM。
+   它直接覆盖完整 Top-100 内全部 eligible segments，不在 proposed path 前增加独立 CLIP shortlist。
+2. Selector 自己拥有轻量 vision tower/tokenizer、query-conditioned local resampler 和 global segment scorer。
+   每个 segment 的 3/6/8 等低清多帧先产生可版本化的 content-only compact tokens；在线根据当前 Query/Memory/
+   candidate state 把每段压成一个 segment token，再在最多约 1200 个 segment tokens 上一次性输出 scalar values。
+3. Selector content tokens 可以跨用户缓存，但必须绑定 exact selector vision checkpoint、frame recipe、resolution、
+   processor 和 media checksum。训练中修改 vision tower 后旧 cache 立即失效；冻结发布后重建 canonical cache。
+4. P4-04 Chinese-CLIP Query-relevance global argmax 保留为未训练 Selector 前的 bootstrap、baseline 和消融，
+   不进入最终 proposed Selector 的前置筛选。Chinese-CLIP proxy artifact 也不等于 Selector-owned token cache。
+5. 选中一个 segment 后，Perceiver 发布 canonical raw RGB frame bundle。约 8B（7—9B class，exact model 待
+   P4-07 确认）的 MLLM Reranker 使用自己的 native visual processor/vision tower 读取原始帧，不要求把
+   Chinese-CLIP `[F,512]` tokens 适配进语言模型。
+6. MLLM Reranker 实现既有 `ScoreUpdater`：输入 Top-100 compact candidate state、SASRec score/rank、Memory、
+   acquisition Query 与全部当前 observed frame Evidence；通过 candidate scoring head 一次输出 candidate logits，
+   不用自由文本/JSON 生成数字。首个 baseline 保留 SASRec prior，输出 learned bounded residual 或等价的
+   prior-preserving logits；每轮从 initial prior + full current EvidenceState 纯重算，不递归累计 previous scores。
+7. 约 8B Reranker 先使用 split-safe Observation State data 训练并固定版本；第一版优先 LoRA/QLoRA，full
+   fine-tuning 只作后续容量实验。训练覆盖 no-evidence、target/non-target evidence、不同 rank/evidence count、
+   multi-item/multi-segment、mask 和 mismatched/shuffled Evidence states。
+8. Reranker 冻结后才生成 Selector labels。对 sampled states 和 stratified segment subsets 计算
+   `Δ log p(target) - λ cost`，保存 raw gain/cost，再训练 ≤1B Selector 预测 expected recommendation gain。
+   Label builder 不要求对每个 state 的约 1200 segments 全部运行一次 8B Reranker；采样规模与 hard-negative
+   recipe 必须版本化并报告覆盖。
+9. 第一条研究 baseline 不做 Selector/Reranker joint training。原因是 Reranker 未固定时 Selector reward 非平稳，
+   反事实 label/cache 持续失效，且 8B teacher call 成本与 credit assignment 难以审计。Alternating refresh、
+   distillation、soft selection、bandit/RL 或端到端 joint tuning 延后 P6/P7 作为独立实验。
+10. 在线执行顺序是 Selector → Reranker；训练依赖顺序是 Reranker → counterfactual labels → Selector。
+    初始 item retriever/ranker 仍是 SASRec；文档必须使用“segment selector”避免与 item retrieval 混淆。
+
+### 对既有 Gate 的修订
+
+- P4-03 Information Need、P4-04 Query-relevance bootstrap、P4-01 segmentation 和 P4-02 Top-100 boundary 保持有效；
+- P4-05 的 eight-bin-center/2—8 valid-frame sampling 继续作为 selected-frame baseline，但 pinned Chinese-CLIP
+  image tower 不再是最终主 Evidence Encoder，只保留 proxy/bootstrap/small-latent comparator；
+- P4-06 的 atomic publication、typed failure、public-ref、privacy 和 replay closure 保持有效，但 canonical Evidence
+  entry 改为 raw-frame bundle；selector tokens 和 MLLM-native cache 是独立 versioned derived artifacts；
+- P4-07 重新定义为 native-frame MLLM Candidate Reranker model/data/training Gate；
+- P5 重新定义为 ≤1B Multimodal Segment Selector data/model/training Gate；
+- P6 将 Small latent reranker、CLIP relevance、不同 Selector/Reranker scales 和 optional joint training 作为对比/消融。
+
+### P4-ARCH-02 Decision Record
+
+```text
+Decision ID: P4-ARCH-02
+Status: Confirmed
+Decision: 最终 proposed selection 使用无独立 CLIP 前筛的 ≤1B 判别式多模态 Segment Selector；Selector 对全部 eligible segments 的低清多帧 compact tokens 做 query-conditioned compression 和全局 scalar scoring。最终选择的 segment 发布 raw-frame Evidence，约 8B native-frame MLLM Reranker 通过 scoring head 对 Top-100 输出分数。第一版先训练并冻结 Reranker，再生成 counterfactual gain labels 和训练 Selector；不从零联合训练。
+Rationale: Selector 的 expected-gain target 必须由有效且固定的 downstream Reranker 定义。Selector-owned compact token path 可以避免把数千 raw images 塞进一个上下文，同时仍让全部 segments 参与 proposed selection；8B MLLM 只读取少量已选 segment 原始帧，从而把多图复杂推理成本限制在每个 action 一次。
+Alternatives considered: CLIP shortlist 后再用 Selector；1B MLLM 一次拼接全部 raw frames；继续使用 Chinese-CLIP latent tokens + Small Reranker；把 Chinese-CLIP tokens 通过新 adapter 注入 8B MLLM；生成式 JSON score；从零联合训练 Selector/Reranker。
+Affected schemas/interfaces: 复用 `SegmentValueModel`、`SegmentValueInput`、`SegmentValue`、`SegmentPerceiver`、`Evidence`、`EvidenceState`、`ScoreUpdater` 和 Controller 顺序。`segment_proxy_ref` 可指向 Selector-owned compact-token manifest；selected-frame Evidence 使用 external raw-frame bundle ref；model-specific tokens/output 只通过 versioned artifacts/metadata 关联。
+Affected docs/tests: README.md；todo/phase_4_discussion.md；todo/implementation_roadmap.md；docs/00_shared_domain_schemas.md；docs/05_segment_value_model.md；docs/07_evidence_score_update.md；docs/10_evaluation_and_training_plan.md；docs/active_multimodal_reranker_engineering_spec.md；后续测试覆盖 full eligible coverage、token-cache identity、query-conditioned compression、raw-frame ref、native-frame MLLM scoring、no-generation output、prior preservation、split-safe observation data、frozen-teacher labels 和 no-joint baseline。
+Resolved follow-up: proposed Selector/Reranker roles、无 CLIP 前筛、raw-frame MLLM input、training/inference order 和 first-stage no-joint boundary。
+Deferred follow-up: P4-07 exact MLLM family/revision/context/scoring head/LoRA data；P5 exact Selector family/size/token count/frame recipe/label sampling；P6 scale/cost/CLIP-shortlist/joint-training ablations；P7 policy/RL extensions。
+Confirmed by: User
+Date: 2026-08-07
 ```
 
 ---
@@ -460,8 +548,8 @@ P3 的 full-catalog Top-100 是 item-level recall handoff，不表示 Deep Encod
 Decision ID: P4-02
 Status: Confirmed
 Decision:
-1. 正式 research path 使用 full train vocabulary → SASRec Top-100 → Agent State，不注入 held-out target；Small Reranker 每轮重排完整 Top-100，最终 next-item decision 只输出 Top-1。
-2. Active search 不设固定 Top-L：对 Top-100 中所有 media-complete、proxy-complete 的未观察 segments 批量计算 cheap value；每轮只把全局 argmax 的一个 segment 送入 Deep Encoder。
+1. 正式 research path 使用 full train vocabulary → SASRec Top-100 → Agent State，不注入 held-out target；native-frame MLLM Reranker 每轮重排完整 Top-100，最终 next-item decision 只输出 Top-1。
+2. Active search 不设固定 item Top-L：对 Top-100 中所有 eligible 未观察 segments 计算 value；每轮只把全局 argmax 的一个 segment 发布为 raw-frame Evidence。
 3. 每个 item 最多 12 个 segments，与 P4-01 `scene-hybrid-v1` 一致；最多约 1,200 个 cheap value calculations 不等于 1,200 次深度编码。
 4. media/proxy-ineligible item 不从排名删除，只是没有可观察 segment；整个 state 无 eligible segment 时在感知前以 `no_eligible_segment` 停止，不随机补齐。
 5. warm target 未进入 Top-100 或 cold target 均计 retrieval miss；validation/test 不注入 target。训练 reranker 时允许显式命名的 target-injected training candidates，并分别报告 conditional reranking 与 end-to-end metrics。
@@ -635,12 +723,13 @@ P4-04 reuses the selected Query's segment relevance to choose one segment
 - P4-03 为最多 32 个 concepts 临时计算 aggregate scores，只发布最终 Query embedding 和 compact diagnostics。
   P4-04 使用该 exact query embedding 与既有 segment proxy refs 确定性重算最终 Query 的 per-segment relevance；
   允许重复这一次廉价点积以保持公共 schema 简洁，但不得换 query/model/template、重新抽帧或使用不同空间；
-- cheap proxy frames/embeddings 按 catalog item/segment 预计算并跨用户复用，不在每个请求中重新抽取；
+- cheap proxy raw frames/embeddings 按 catalog item/segment + recipe 一次性预计算并跨用户复用，不在每个
+  请求中重新抽取；每轮 Query 只重算 concept text embedding 与当前 Top-100 cached refs 的点积；
 - `25%/50%/75%` 三帧只作为跑通第一条 P4 pipeline 的工程 baseline，不声明为最终最优采样；frame count、
   sampling positions、medoid/uniform/denser alternatives 明确留给 P6 独立消融，不能静默改变 P4 artifact recipe；
 - 只有最终选中的一个 segment 进入 expensive path；P4-04 已确认只使用 selected-Query pure relevance，不再
-  加入 rank/novelty；P4-05 已确认 eight-bin-center 目标采样、2—8 张真实有效帧与 pinned frozen
-  Chinese-CLIP image tower contract。
+  加入 rank/novelty；P4-ARCH-02 保留 eight-bin-center/2—8 张有效 raw frames，但已将 pinned Chinese-CLIP
+  Deep Encoder 降为 bootstrap/comparator。
 
 ### 6.5 Deferred Query/Frame Experiment Matrix
 
@@ -750,10 +839,25 @@ Date: 2026-08-06
 
 ## 8. P4-05 — Deep Segment Encoder, Selected Frames, and Artifact Contract
 
-Status: `Confirmed`
+Status: `Confirmed; payload amended by P4-ARCH-02`
 
-当前主线已由 P4-ARCH-01 锁定为 frozen Deep Segment Encoder。P4-05 确认复用 pinned Chinese-CLIP image
-tower，对 selected segment 最多八张均匀帧输出 latent frame tokens；MLLM/prompt 细节继续只属于 P6 对比支线。
+P4-ARCH-02 保留 selected-segment eight-bin-center/2—8 valid-frame sampling，但取代 pinned Chinese-CLIP
+Deep Encoder 主线：canonical perception output 改为 processor-independent selected raw-frame bundle，供约 8B
+MLLM Reranker 使用 native visual processor 读取。下方 Chinese-CLIP token contract 作为历史 P4-05 baseline 和
+Small-latent comparator 保留，不再是最终 proposed path。
+
+### 8.0 P4-ARCH-02 active amendment
+
+1. `SegmentPerceiver.observe()` 负责 deterministic decode、invalid-frame filtering 和 raw-frame bundle publication；
+   它不在最终 proposed path 内运行 Chinese-CLIP 或替 8B MLLM 做视觉推理。
+2. eight-bin-center 目标位置、2—8 张真实有效帧、少于两帧 fail closed、timestamp/frame checksum、segment
+   boundaries、mask 和 sampling recipe 继续有效。Exact native resolution/codec 与 4/8/16 frame comparator 由
+   P4-07/P6 配置确认，不能静默改变 artifact identity。
+3. Canonical selected-frame bundle 是 content-only、user/query independent、可跨 run 复用的受控本地 artifact；
+   Selector-owned compact tokens 和 MLLM-native vision tokens 必须作为独立 derived artifacts，分别绑定 exact
+   checkpoint/processor，不能覆盖 raw-frame identity。
+4. 约 8B MLLM 的 native vision tower、language backbone 和 scoring head 属于 P4-07 `ScoreUpdater`，不是
+   `SegmentPerceiver`。Reranker call 的显存、视觉 tokens、文本 tokens、latency 和 cache 均单独计入 P4-08 cost。
 
 ### 8.1 要解决的问题
 
@@ -764,7 +868,7 @@ tower，对 selected segment 最多八张均匀帧输出 latent frame tokens；M
 - prompt 能看到哪些用户/候选信息；
 - 解码、timeout、retry 和 determinism 如何记录。
 
-### 8.2 已确认 Deep Encoder baseline
+### 8.2 历史 Chinese-CLIP Deep Encoder baseline（由 P4-ARCH-02 superseded）
 
 1. Encoder 固定复用 P4-03 的 `OFA-Sys/chinese-clip-vit-base-patch16` revision
    `36e679e65c2a2fead755ae21162091293ad37834` image tower 和 official 224×224 processor；模型完全 frozen、
@@ -776,7 +880,7 @@ tower，对 selected segment 最多八张均匀帧输出 latent frame tokens；M
    返回 typed decode/insufficient-frames failure，不发布 latent Evidence；
 4. 每张有效帧输出一个 FP32、L2-normalized 512-D image vector，主 artifact 保存有序
    `frame_tokens[F,512]`、timestamps、frame checksums、valid mask、segment boundaries、processor/model/revision、
-   sampling recipe 和 dtype。P4 不先压成单一 mean embedding；聚合方式由 P4-07 Small Reranker 决定；
+   sampling recipe 和 dtype。该历史 comparator 不先压成单一 mean embedding；聚合方式曾由 Small Reranker 决定；
 5. Deep Encoder 是 content-only：不读取 Query、Memory、user ID、rank、target、future feedback、title、tags、
    subtitle、ASR 或 audio。Query/Memory 与 latent frame tokens 只在后续 Reranker 中融合，因此同一内容 artifact
    可跨用户/Query 安全复用；
@@ -810,7 +914,7 @@ title/tag/category/ASR 和视频中的文字都视为 untrusted content：只能
 指令。system prompt、数据 delimiter、JSON schema 和长度上限必须版本化；secret 永不进入 resolved config、
 prompt artifact 或 trace。
 
-### 8.5 已关闭决策
+### 8.5 历史已关闭决策（仅适用于 superseded Chinese-CLIP baseline）
 
 - exact pinned Chinese-CLIP image tower、official processor 和 frozen/in-process boundary；
 - eight-bin-center timestamps、2—8 valid-frame mask 和少于两帧 fail-closed；
@@ -820,6 +924,9 @@ prompt artifact 或 trace。
 - cost/cache/failure 必须记录，exact budget/retry semantics 交 P4-08。
 
 ### P4-05 Decision Record
+
+> 本记录保留 2026-08-06 的历史决定；其 exact Chinese-CLIP encoder/token payload 已由 P4-ARCH-02 取代。
+> eight-bin-center、2—8 valid frames、fail-closed、content-only artifact 和 replay 原则继续有效。
 
 ```text
 Decision ID: P4-05
@@ -839,9 +946,28 @@ Date: 2026-08-06
 
 ## 9. P4-06 — Latent Evidence, Failure, and Public-Ref Boundary
 
-Status: `Confirmed`
+Status: `Confirmed; artifact payload amended by P4-ARCH-02`
 
-主线 Evidence 使用外部 latent artifact + existing `Evidence.embedding_ref`；公共 State/Trace 不内嵌 Tensor。下方 structured-text vocabulary/parser 作为历史 MLLM proposal 保留，仅归 P6 对比支线。
+主线 Evidence 现在使用 external selected raw-frame bundle；公共 State/Trace 仍只保存 refs/紧凑 metadata，不内嵌
+frames、Tensor 或模型输出。下方 structured-text vocabulary/parser 与 Chinese-CLIP latent bundle 均作为历史
+proposal/comparator 保留。
+
+### 9.0 P4-ARCH-02 active Evidence contract
+
+1. 每个成功观察的 segment 原子发布一个 content-addressed raw-frame bundle：manifest 闭包绑定 2—8 张 canonical
+   RGB frame payloads、timestamps、frame checksums、valid mask、media/segment identity、sampling recipe、codec/
+   color-space identity、payload sizes 和 SHA-256。Partial bundle 不得获得公共 ref。
+2. P4 baseline 复用现有 schema：`Evidence.raw_output_ref` 指向 selected-frame bundle manifest；
+   `Evidence.embedding_ref` 仅在存在 exact model-specific derived visual-token manifest 时使用，否则为 null。
+   `text_summary` 与 `confidence` 仍为 null。Evidence event metadata 记录 acquisition Need/step，但 raw-frame content
+   artifact 不包含 user/Query，可跨用户安全复用。
+3. Selector-owned compact tokens、Chinese-CLIP comparator tokens 和 8B MLLM-native visual caches 是三个不同的
+   derived artifact families；任何 ref 都必须绑定 source frame bundle checksum、model checkpoint、processor、
+   dtype/shape/token recipe。用户/Query-dependent MLLM scores/output 不能跨用户缓存。
+4. P4-06 不生成 item-level aggregate embedding。每次成功按 action order 追加 per-segment Evidence；
+   `evidence_embedding_ref=null`。P4-07 MLLM Reranker 解析当前全部 frame Evidence 并直接输出 candidate scores。
+5. Atomic publication、typed failure、failed-no-Evidence/no-score-update、secret/path sanitization、受限 artifact 不入 Git
+   和 saved replay 不重跑 decode/MLLM 的原则保持有效。Replay 缺失或损坏 frame/model-output artifact 时 fail closed。
 
 ### 9.1 历史 MLLM Evidence vocabulary（P6 对比支线）
 
@@ -871,7 +997,7 @@ summary: bounded optional text
 5. raw response 即使失败也进入受控 sidecar，便于诊断，但不进入公开仓库或论文补充材料；
 6. model self-confidence 只作为未经校准的 heuristic signal，不能描述成真实概率。
 
-### 9.3 已确认 latent Evidence baseline
+### 9.3 历史 Chinese-CLIP latent Evidence baseline（由 P4-ARCH-02 superseded）
 
 1. 每个成功观察的 segment 发布一个 content-addressed latent bundle。Canonical entry point 为
    `manifest.json`，payload 为 `frame_tokens.npy`；NPY 只允许非 object tensor 并以 `allow_pickle=False` 加载。
@@ -902,6 +1028,9 @@ summary: bounded optional text
 
 ### P4-06 Decision Record
 
+> 本记录保留 2026-08-06 的历史 latent-token payload；P4-ARCH-02 已将主 entry 改为
+> `Evidence.raw_output_ref -> selected raw-frame bundle`，并把 `embedding_ref` 改为可选 model-specific derived ref。
+
 ```text
 Decision ID: P4-06
 Status: Confirmed
@@ -918,18 +1047,21 @@ Date: 2026-08-06
 
 ---
 
-## 10. P4-07 — Small Candidate-aware Multimodal Reranker
+## 10. P4-07 — Native-frame MLLM Candidate Reranker
 
 Status: `Pending`
 
-P4-ARCH-01 已确认 learned Small Reranker 是主线 `ScoreUpdater`。P4-07 仍待确认 exact network capacity、feature projection、training config 和 validation-only calibration。
+P4-ARCH-02 已确认约 8B native-frame MLLM Reranker 是主线 `ScoreUpdater`。本 Gate 仍待确认 exact model/
+revision、native frame/context contract、candidate scoring head、LoRA/QLoRA recipe、Observation State dataset、
+loss/calibration 和租卡资源画像。
 
 ### 10.1 要解决的问题
 
-SASRec 输出是 request-local uncalibrated raw logit；Evidence alignment 是离散/归一化信号。必须确认如何在
-不破坏 prior、不重复累计旧证据的前提下产生可解释 delta。
+必须让一个约 8B MLLM 在只读取已观察 raw-frame Evidence 的前提下，对完整 Top-100 输出稳定可训练的数值
+scores。它不能观看全部候选视频、生成自由文本数字、读取 target/future feedback，也不能破坏 SASRec prior、
+依赖 candidate serialization 顺序或重复累计旧 Evidence。
 
-### 10.2 历史 residual proposal（已由 P4-ARCH-01 superseded）
+### 10.2 历史 residual/Small-Reranker proposals（已由 P4-ARCH-02 superseded）
 
 1. 每次从 `initial_ranking + 全部当前 EvidenceState` 重新计算，不在 previous score 上重复叠加同一 Evidence。
 2. 每个 Evidence 转为有符号 signal：
@@ -957,12 +1089,40 @@ new_score_i = initial_raw_score_i + lambda * state_score_scale * aggregate_signa
 
 ### 10.3 当前推荐 baseline 与待确认项
 
-- 输入：SASRec user hidden、candidate ID/base embedding、base score/rank、Memory atoms、Information Need、observed mask 与每个 item 的 current latent Evidence；各 embedding space 独立投影到共同 `d_model`；
-- candidate-aware listwise transformer 每轮输出全体 logits，candidate serialization 随机化并显式提供 rank feature；
-- 每轮固定从 initial SASRec base scores + full current EvidenceState 重算，不输入 previous current scores；
-- training observation states 平衡 target/non-target、rank 和 evidence count；No-Evidence 是必要容量控制；
-- V1 loss 为 listwise CE + no-evidence consistency + mask invariance；shuffled Evidence 只作 sanity check；
-- exact K/d_model/layers/heads、evidence aggregator、Memory adapter、optimizer 和 validation-only stop calibration 仍待确认。
+1. Model family 只从支持离线部署、native multi-image/video、hidden-state/scoring-head fine-tuning、明确许可和
+   租卡显存可承载的 7—9B class MLLM 中选择；exact model card、revision、processor、context limit、license、
+   flash-attention/quantization compatibility 必须实测后再锁定，不能凭模型名猜测。
+2. Reranker 只读取 EvidenceState 中已成功观察 segments 的 canonical raw frames；未观察候选只提供 compact
+   item text/category/tag、SASRec item/base features、score/rank 和 mask。禁止为了 rerank 把 Top-100 全部视频帧
+   输入 MLLM，否则主动感知成本边界失效。
+3. 输入包含 SASRec user hidden/history projection、Dynamic Memory compact atoms、Top-100 compact candidates、
+   每个 observed Evidence 的 acquisition Query/step 和 native frames。所有用户/候选文本均按 untrusted data
+   delimiter 处理；不包含 target、future feedback、Oracle gain 或绝对路径。
+4. 输出使用 candidate marker hidden states + shared scalar scoring head，一次返回与 Top-100 一一对应的 logits；
+   不通过 autoregressive JSON/自然语言生成分数。Candidate order 在训练中随机化，并显式提供 original rank/
+   candidate identity；测试 permutation consistency 和 stable identity tie-break。
+5. 首个 prior-preserving score contract 建议为 `final_i = base_i + alpha * tanh(delta_i)` 或数学等价的 bounded
+   residual head；exact alpha/normalization 只在 validation 校准。每轮从 initial SASRec base + full current
+   EvidenceState 重算，不输入 previous current scores。
+6. 先按 user/time split，再在 train 内构造 Observation State variants：no-evidence、target evidence、不同 rank
+   non-target evidence、multi-item/multi-segment、不同 evidence count、hard negative、mismatched/shuffled frames/
+   queries。Validation/test 不 target-inject，并同时报告 conditional Top-100 reranking 与 end-to-end retrieval。
+7. 第一版优先 parameter-efficient tuning：冻结或部分冻结 native vision tower，以 LoRA/QLoRA 调整 projector/
+   language blocks/scoring head；full fine-tuning、vision unfreeze 和 3B/8B/更大 scale 属于 P6 cost/capacity ablation。
+8. Primary loss 为 Top-100 listwise next-item CE；同时加入 no-evidence prior consistency、mask invariance 和
+   evidence-query mismatch/shuffle contrastive objective。Loss weights、candidate packing/chunking、max observed
+   frames/context、optimizer、batch/gradient accumulation 和 early stopping 仍需 P4-07 确认。
+9. Reranker 必须先取得相对 SASRec/no-evidence/Small-latent baselines 的有效且稳定 validation 表现并冻结 exact
+   checkpoint；之后 P5 才使用它生成 Segment Selector counterfactual labels。P4/P5 baseline 不联合训练。
+
+### 10.4 下一轮需要逐项确认
+
+- exact 7—9B MLLM shortlist、许可、语言/视频能力与租卡 GPU profile；
+- raw-frame count/resolution/native image-vs-video API、多个已观察 segments 如何打包；
+- Top-100 candidate serialization/context budget 和 candidate-marker scoring head；
+- Observation State dataset size、variant proportions、hard negatives 和 target-injection firewall；
+- LoRA/QLoRA modules、quantization、loss weights、validation metrics 和 checkpoint selection；
+- MLLM score artifact、cost/replay 与 StopPolicy calibration。
 
 ### P4-07 Decision Record
 
@@ -988,7 +1148,8 @@ Status: `Pending`
 ### 11.1 Runtime 推荐 baseline（待确认）
 
 - 新增 strict `phase4-runtime` config 和 exact artifact graph；P3 zero-budget config 继续原样可运行；
-- 真实 component selector 显式选择 rule Need、heuristic Value、Deep Segment Encoder Perceiver、Evidence/Observation Updater、Small Reranker ScoreUpdater 和 StopPolicy；禁止 unavailable/mock silent fallback；
+- 真实 component selector 显式选择 rule Need、Query-relevance bootstrap Value、raw-frame Perceiver、
+  Evidence/Observation Updater、native-frame MLLM ScoreUpdater 和 StopPolicy；禁止 unavailable/mock silent fallback；
 - 第一条 canonical real smoke 建议 `max_perception_actions=2`，证明更新后重新估计 need/value 并再次决策；
 - `ranking_margin_threshold=null`；`min_segment_value` 只在 P4-04 value 范围锁定后设置；
 - model/media/prompt preflight 在正式 action 前完成，资源缺失不能消耗感知 budget；
@@ -997,11 +1158,12 @@ Status: `Pending`
 ### 11.2 一次 action 与模型调用
 
 ```text
-one SegmentPerceiver.observe() attempt = one Agent action
+one selected-segment observe + successful MLLM rerank step = one Agent action
 ```
 
-它内部可能包含 frame decode、cache lookup 和一次 deep encoding。若将来允许 retry，多次底层调用
-仍属于同一 action，但必须完整报告 call count/tokens/latency，不能只报 action 数掩盖成本。
+一次成功 action 包含 raw-frame bundle resolve/publish，以及随后一次约 8B MLLM ScoreUpdater forward；failed
+Perceiver 不调用 Reranker。若将来允许 retry，多次 decode/model calls 仍属于同一 logical action，但必须完整
+报告 selector、frame、MLLM call count/tokens/FLOPs/latency，不能只报 action 数掩盖成本。
 
 ### 11.3 Additive run artifacts
 
@@ -1017,18 +1179,21 @@ runs/phase4/<run_id>/
 └── perception/<call_id>/
     ├── request_manifest.json
     ├── frame_manifest.json
-    └── raw_response.*
+    ├── reranker_request_manifest.json
+    └── candidate_scores.json
 ```
 
-每次 attempt/call 至少记录：segment duration、requested/processed frame count、input/output tokens、latency、
-model/revision、prompt version、generation config、cache hit、status/failure code 和 raw-output checksum。
+每次 attempt/call 至少记录：segment duration、requested/processed frame count、selector tokens/FLOPs、MLLM visual/
+text tokens、latency、peak memory、model/revision、processor/context/scoring-head versions、quantization/LoRA identity、
+cache hit、status/failure code 和 score-output checksum。
 
 `PerceptionResult.metadata` 只放轻量 reference/cost summary；大型 payload 留在 sidecar。saved-output replay 继续只验证 State/Trace chain，不读取媒体、不调用 Deep Encoder；另建 P4 artifact validator 检查 sidecar/ref/checksum/cost closure。
 
 ### 11.4 Cache 推荐边界（待确认）
 
-- cache key 覆盖 model revision、prompt/schema、generation config、frame checksums、Information Need、相关
-  Memory/Evidence context；不能只按 segment ID 跨用户复用 personalized output；
+- raw-frame bundle 和 frozen Selector content tokens 可按 content/model identity 跨用户复用；MLLM candidate scores
+  的 cache key 必须覆盖 model/scoring-head revision、frame checksums、Top-100 serialization、SASRec prior、
+  Information Need、Memory/Evidence context，不能只按 segment ID 跨用户复用 personalized output；
 - cache hit 和 fresh inference 分开报告 incurred cost 与 logical perception cost；
 - 正式 latency/cost 测量使用明确 cold/warm cache protocol，不能混在一个均值里；
 - cache corruption/checksum mismatch fail closed。
@@ -1170,15 +1335,16 @@ Date: TBD
 | P4-02 | Top-100 recall/rerank、all-eligible cheap search、Top-1 output | Confirmed |
 | P4-03 | candidate-aware rule-based Information Need | Confirmed |
 | P4-04 | pure Query-relevance Segment Value | Confirmed |
-| P4-ARCH-01 | Deep Encoder + Small Reranker architecture amendment | Confirmed |
-| P4-05 | frozen Chinese-CLIP、2—8 selected frames、latent tokens | Confirmed |
-| P4-06 | per-segment latent bundle、typed failure、public refs | Confirmed |
-| P4-07 | Small Candidate-aware Multimodal Reranker | Pending |
+| P4-ARCH-01 | Deep Encoder + Small Reranker architecture amendment | Superseded by P4-ARCH-02 |
+| P4-ARCH-02 | ≤1B Selector + native-frame ~8B MLLM Reranker | Confirmed |
+| P4-05 | eight-bin selected raw frames；Chinese-CLIP payload superseded | Confirmed, amended |
+| P4-06 | raw-frame Evidence、typed failure、public refs | Confirmed, amended |
+| P4-07 | native-frame MLLM Candidate Reranker | Pending |
 | P4-08 | runtime/budget/cache/cost/replay | Pending |
 | P4-09 | evaluation/tests/DoD | Pending |
 | P4-XG-01 | cross-gate audit and implementation authorization | Pending |
 
-下一项：确认 P4-07 Small Candidate-aware Multimodal Reranker。
+下一项：确认 P4-07 exact native-frame MLLM model、scoring head 和 Observation State training data。
 
 ---
 

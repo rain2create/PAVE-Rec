@@ -41,7 +41,7 @@ content-hash-pinned official public sampled release。若作者以后提供 full
 ```text
 Tsinghua ShortVideo
     → real SASRec / Dynamic Memory
-    → Deep Segment Encoder + Small Multimodal Reranker loop
+    → selected raw-frame Evidence + native-frame MLLM Reranker loop
     → Tsinghua Oracle data
     → first supervised Segment Value Model
     → stabilize shared implementation
@@ -94,7 +94,8 @@ SASRec + Dynamic Memory
 SASRec + Random Perception
 SASRec + Relevance-only Perception
 SASRec + Full Perception
-Small Reranker with No Evidence
+MLLM Reranker with No Evidence
+Small latent Reranker comparator
 PAVE-Rec
 Oracle
 ```
@@ -109,7 +110,8 @@ Oracle
 | Random Perception | TBD | TBD |
 | Relevance-only | TBD | TBD |
 | Full Perception | TBD | TBD |
-| Small Reranker with No Evidence | TBD | TBD |
+| MLLM Reranker with No Evidence | TBD | TBD |
+| Small latent Reranker comparator | TBD | TBD |
 | PAVE-Rec | TBD | TBD |
 | Oracle | TBD | TBD |
 
@@ -324,8 +326,8 @@ Perceiver 所需媒体仍通过显式 media/segment refs 管理。
 
 ```text
 before ranking
-    → fixed Deep Segment Encoder / Evidence lookup
-    → frozen Small Candidate-aware Multimodal Reranker
+    → canonical selected raw-frame Evidence lookup
+    → frozen native-frame MLLM Candidate Reranker
     → after ranking
     → gain = metric(after) - metric(before)
 ```
@@ -337,8 +339,8 @@ primary:   delta NDCG@10
 secondary: delta MRR, delta target rank, top-1 flip, regret reduction
 ```
 
-负 gain 必须保留。Oracle artifact 必须记录 state、segment、encoder/preprocess、Evidence、
-Small Reranker、before/after ranking、raw gain、cost 和 label 版本。
+负 gain 必须保留。Oracle artifact 必须记录 state、segment、frame recipe/Evidence、native-frame MLLM
+Reranker/scoring-head checkpoint、before/after ranking、raw gain、cost 和 label 版本。
 
 Supervised Segment Value Model 只能读取 online 可用的 cheap features，不能读取
 Teacher Evidence、after ranking、future feedback 或 actual gain。
@@ -516,10 +518,10 @@ new-item split；若 dataset 没有可靠 catalog availability 时间，只能�
 ```text
 P3: Tsinghua sampled adapter + derived sequence + SASRec + Dynamic Memory
 P4: official 1..100 media smoke → coverage-driven Tsinghua media subset
-    → frozen Deep Encoder + heuristic Segment Value + Small Reranker
-P5: Tsinghua Oracle data + first supervised Segment Value Model
+    → Query-relevance bootstrap + selected raw frames + frozen native-frame MLLM Reranker
+P5: Tsinghua counterfactual data + first ≤1B Multimodal Segment Selector
 P6: Tsinghua main evaluation + KuaiRec calibration + complete MicroLens PAVE-Rec replication
-    → MLLM-text + LLM Reranker system-level comparison
+    → Small latent/text-only Reranker、CLIP-shortlist and joint-training comparisons
     → optional cold-item evaluation after main results
 P7: optional KuaiRand OPE/RL and M³L transfer
 ```
@@ -557,7 +559,7 @@ user/item vocabulary refs
 feature encoder versions
 model/checkpoint IDs
 Deep Encoder/preprocess and optional Teacher/MLLM/prompt versions
-Small Reranker and gain-label versions
+native-frame MLLM Reranker/scoring-head and gain-label versions
 seeds
 ranking and perception-cost metrics
 agent traces

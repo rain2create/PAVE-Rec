@@ -148,6 +148,11 @@ fallback: 这段视频是否包含有助于区分当前候选的核心内容？
 `delta=min(250ms, 0.1*segment_duration)` 和 `0,-delta,+delta,-2delta,+2delta` 顺序在段内寻找替代帧；
 去重/过滤后少于两张有效帧的 segment 不参与。Image vectors 使用 official 224×224 processor，发布为 FP32、
 L2-normalized 512-D refs。
+这些 raw proxy frames 的抽取与 Chinese-CLIP image encoding 按 catalog content + recipe 一次性离线完成并缓存，
+不是每个用户/Query 重新解码视频。每轮 Information Need 只重新编码 concept Query，并与当前 Top-100 对应的
+缓存 proxy refs 做轻量点积/聚合。该 Query-side artifact 不承担最终 Selector 的 shortlist，也不等于
+Selector-owned trainable compact visual tokens；两类 artifact 可以引用同一 frame timestamps，但 model/checkpoint/
+processor/version 必须独立。
 该三帧 recipe 只用于跑通 P4 pipeline 和形成可复现 baseline，不声明为最终最优采样；帧数、相对位置以及
 medoid/uniform/更密采样必须作为后续独立消融，通过新 artifact recipe/version 切换。
 P6 同时比较 sparse high-resolution 与 dense low-resolution proxy：低清多帧可能以更低的解码、缓存和传输

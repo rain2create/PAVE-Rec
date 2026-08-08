@@ -265,7 +265,8 @@ SASRec + Dynamic Memory
 SASRec + Random Perception
 SASRec + Relevance-only Perception
 SASRec + Full Perception
-Small Reranker with No Evidence
+MLLM Reranker with No Evidence
+Small latent Reranker capacity comparator
 PAVE-Rec
 Oracle
 ```

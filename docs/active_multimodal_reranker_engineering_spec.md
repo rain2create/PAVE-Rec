@@ -1,16 +1,17 @@
 # 面向推荐决策的主动多模态感知 Agent
-## Small Multimodal Reranker 主线与 LLM Reranker 对比支线工程说明
+## ≤1B Multimodal Segment Selector 与 Native-frame MLLM Reranker 工程说明
 
 > 文档定位：本文件用于指导项目 V1 的工程实现、数据构造、模型训练与实验验证。
 >
 > 当前核心决策：
 >
-> - **主线**：SASRec 行为先验 + Recommendation-aware Segment Value Model + 按需 Segment Embedding 提取 + Small Candidate-aware Multimodal Reranker。
-> - **主线默认实现**：被选 Segment 的 Embedding 直接输入 Multimodal Reranker；Preference-conditioned Evidence Adapter 作为可选增强，而非强制模块。
-> - **对比支线**：MLLM 将被选 Segment 转成文本 Evidence，再由 LLM Reranker 完成候选选择或重排。
-> - **核心原则**：Value Model 决定“值不值得看”，Embedding Encoder 负责把原始帧转成可用表示，Reranker 决定这些表示如何改变整个候选排序。
+> - **主线 Selector**：≤1B 判别式多模态 Segment Selector 使用自己缓存的低清多帧 compact tokens，对全部 eligible segments 直接输出 expected value，不使用独立 CLIP shortlist。
+> - **主线 Reranker**：最终选择的 segment 发布 raw-frame Evidence；约 8B native-frame MLLM 通过 candidate scoring head 输出 Top-100 logits，不生成自由文本分数。
+> - **训练依赖**：先训练并冻结 MLLM Reranker，再生成 counterfactual gain labels 和训练 Selector；第一版不联合训练。
+> - **对比方法**：P4 Chinese-CLIP Query-relevance、CLIP-shortlist + Selector、Small latent/text-only Reranker 和不同模型规模。
+> - **核心原则**：Selector 决定“值不值得看”，Perceiver 只发布已选原始帧，MLLM Reranker 决定这些 Evidence 如何改变整个候选排序。
 >
-> 本文件是对既有 P0–P4 设计的架构补充，不新建第二套公共 schema、Controller 或目录树。公共类型和运行语义仍以 `docs/00_shared_domain_schemas.md`、P1 Protocol 与现有 `src/pave_rec` 为准；本文中的 Tensor、batch 和网络结构只描述组件内部实现。
+> 本文件是对既有 P0–P4 设计的架构补充，不新建第二套公共 schema、Controller 或目录树。公共类型和运行语义仍以 `docs/00_shared_domain_schemas.md`、P1 Protocol 与现有 `src/pave_rec` 为准；本文中的 Tensor、batch 和网络结构只描述组件内部实现。若本文旧 Small-Reranker/Chinese-CLIP-latent 段落与 P4-ARCH-02 冲突，以 P4-ARCH-02 及其后标注的 active amendment 为准。
 
 ---
 
@@ -43,11 +44,11 @@ SASRec 初始排序
   ↓
 Information Need 提炼当前最值得消除的偏好信息缺口
   ↓
-Segment Value Model 预测未观察 Segment 的决策价值
+≤1B Multimodal Selector 预测全部未观察 Segment 的决策价值
   ↓
-仅深入编码最高价值的 Item-Segment
+仅发布最高价值 Item-Segment 的原始帧
   ↓
-Small Multimodal Reranker 更新整个候选集合
+~8B Native-frame MLLM Reranker 更新整个候选集合
   ↓
 继续感知 or 停止
 ```
@@ -85,8 +86,8 @@ Small Multimodal Reranker 更新整个候选集合
 └──────────────────────┬──────────────────────┘
                        ↓
 ┌─────────────────────────────────────────────┐
-│ 5. Segment Value Model                      │
-│ Input: Cheap Segment Proxy                  │
+│ 5. ≤1B Multimodal Segment Selector          │
+│ Input: all eligible compact frame tokens    │
 │ Output: Expected Recommendation Gain        │
 └──────────────────────┬──────────────────────┘
                        ↓
@@ -102,9 +103,9 @@ Small Multimodal Reranker 更新整个候选集合
         └────────────────┬────────────────┘
                          ↓
 ┌─────────────────────────────────────────────┐
-│ 7. Small Candidate-aware Multimodal Reranker│
-│ Directly consume Segment Embedding by default│
-│ Input all candidates, output all logits     │
+│ 7. ~8B Native-frame MLLM Candidate Reranker │
+│ Native-read only selected raw-frame Evidence│
+│ Input Top-100 state, output all logits       │
 └──────────────────────┬──────────────────────┘
                        ↓
 ┌─────────────────────────────────────────────┐
@@ -402,7 +403,45 @@ stop = (
 
 ---
 
-# 8. 模块四：Recommendation-aware Segment Value Model
+# 8. 模块四：≤1B Recommendation-aware Multimodal Segment Selector
+
+## 8.0 P4-ARCH-02 Active Selector Contract
+
+最终 proposed `SegmentValueModel` 是不超过约 1B 的判别式多模态 Selector。它不依赖独立 CLIP shortlist，
+必须为完整 Top-100 内全部 eligible `(item, segment)` 输出一一对应 scalar values。
+
+它不是常见的 single-video keyframe selector：后者只在一个视频内部找最显著/最相关的 frame 或 clip；本任务
+同时面对多个候选视频、每个视频多个 segments，并根据用户 Memory、Information Need、SASRec competition 和
+已有 Evidence 做跨 item 全局选择。Selector 因此采用 frame → segment → item context → cross-item global scoring
+的层级结构，输出目标仍是一个 `(item, segment)`，不是一张 frame。
+
+```text
+per-segment low-resolution frames（3/6/8/...）
+    → Selector-owned vision tower/tokenizer
+    → cacheable compact frame tokens
+    → Query/Memory-conditioned local resampler
+    → one segment token per segment
+    → within-item segment context + item rank/score token
+    → cross-item global set/listwise scorer over all segments
+    → expected recommendation gain values
+```
+
+工程上不能把最多约 1200 segments 的数千 raw images 拼成一个全局 MLLM context。Local visual encoding/
+compression 在 segment 内批处理；global scorer 目标只看到约 1200 个 segment-level tokens。Content tokens
+绑定 exact frame recipe/resolution/vision checkpoint/processor，可跨用户复用；Query-conditioned representations/
+values 不可跨用户复用。Vision tower 更新后必须重建 cache。
+
+Selector 输入包括 Information Need/Query、Memory、SASRec score/rank、item/segment metadata、observation state 和
+compact visual tokens。它通过 scalar head 输出数值，不生成文字。100M/300M/500M/1B、tokens/frame、
+tokens/segment、frame count、vision freeze/unfreeze 和 CLIP-shortlist comparator 均作为 versioned experiments。
+
+P4-04 Chinese-CLIP Query-relevance 只用于 Selector 训练前 bootstrap 和 baseline，不是 proposed path 的前筛。
+
+训练依赖固定为：先训练并冻结 native-frame MLLM Reranker，再用其 before/after utility 构造
+`Δ log p(target) - λ cost` labels，最后训练 Selector。第一版不传播 Reranker gradient、不联合训练；
+alternating/distillation/joint/RL 延后 P6/P7。
+
+## 8.H Historical expected-gain abstraction
 
 ## 8.1 职责
 
@@ -494,7 +533,32 @@ y_{i,j}^{value}
 
 ---
 
-# 9. 模块五：On-demand Segment Embedding Extractor
+# 9. 模块五：On-demand Selected Raw-frame Evidence Publisher
+
+## 9.0 P4-ARCH-02 Active Frame Contract
+
+最终主线的 `SegmentPerceiver` 不负责运行 Chinese-CLIP 或 8B MLLM。它只对已选择 segment 做 deterministic
+decode，并发布 processor-independent raw-frame Evidence：
+
+```text
+selected segment
+    → eight-bin-center target timestamps
+    → nearest-PTS / invalid-frame filtering
+    → retain 2—8 real RGB frames + mask
+    → atomic content-addressed frame bundle
+    → Evidence.raw_output_ref
+```
+
+Frame manifest 绑定 media/segment identity、timestamps、frame checksums、codec/color space、sampling recipe、
+payload sizes 和 SHA-256。少于两张有效帧 fail closed。Raw-frame bundle 是 content-only，可跨用户复用；
+Selector compact tokens、Chinese-CLIP comparator tokens 和 MLLM-native vision caches 是分别绑定 checkpoint/
+processor 的 derived artifacts。`Evidence.embedding_ref` 仅在存在这些 exact derived tokens 时使用。
+
+约 8B MLLM Reranker 在 `ScoreUpdater` 内使用 native processor 读取 frame bundle。它只看已观察 segments，
+不看 Top-100 全部视频。Exact 4/8/16/32 frame count、resolution、native image/video API 和 multiple-Evidence
+packing 由 P4-07/P6 配置与实验确认。
+
+## 9.H Historical Segment Embedding Extractor / Small-latent Comparator
 
 ## 9.1 模块定位
 
@@ -559,9 +623,8 @@ Selected Segment
 - 计算与存储成本更高；
 - 工程复杂度更高。
 
-P4-05 已确认：V1 使用 pinned `OFA-Sys/chinese-clip-vit-base-patch16` revision
-`36e679e65c2a2fead755ae21162091293ad37834` 的 frozen image tower 跑通完整闭环；原生 Video Encoder
-和其他视觉编码器作为后续 versioned experiment。
+历史 P4-05 曾确认 pinned `OFA-Sys/chinese-clip-vit-base-patch16` latent-token baseline；P4-ARCH-02 已将其
+从最终主线降为 Query/proxy/bootstrap 与 Small-latent comparator。最终 MLLM Reranker 原生读取 raw frames。
 
 ## 9.3 输入
 
@@ -575,7 +638,7 @@ SegmentEmbeddingInput = {
 
 V1 对 selected segment 目标采样八帧视觉输入。
 
-这里的目标八帧是 **segment 被 P4-04 选中之后**，将该 segment 均分为八个时间 bin，并取各 bin 中心
+这里的历史 token baseline 在 segment 被选中之后，将该 segment 均分为八个时间 bin，并取各 bin 中心
 `6.25/18.75/31.25/43.75/56.25/68.75/81.25/93.75%`。经 deterministic nearest-PTS、去重和无效帧过滤后，
 保留 2—8 张真实有效帧及 mask，不复制补满；少于两张时 typed failure。每帧由 frozen Chinese-CLIP image
 tower 输出 FP32、L2-normalized 512-D token，artifact 主输出为有序 `[F,512]` frame tokens，不在本阶段提前池化。
@@ -618,18 +681,15 @@ SegmentEmbeddingOutput = {
 - 在 Reranker 内部进行 Cross-Attention；
 - 使用可选 Evidence Adapter。
 
-P4/V1 的 exact 输出是 finite FP32 `frame_tokens[F,512]`（`2 <= F <= 8`，row-wise L2 normalized）与
-八个目标 slot 的 valid mask，而不是上方示意的 pooled segment embedding。
+历史 Chinese-CLIP comparator 的 exact 输出是 finite FP32 `frame_tokens[F,512]`（`2 <= F <= 8`，row-wise
+L2 normalized）与八个目标 slot 的 valid mask；它不是 ARCH-02 final Reranker 的主输入。
 
-P4-06 将每个成功 segment 发布为 content-addressed latent bundle：canonical `manifest.json` 闭包绑定
-`frame_tokens.npy` payload、mask/timestamps/frame checksums、exact model/processor/sampling recipe 和 SHA-256。
-`Evidence.embedding_ref` 指向 manifest；`text_summary`、`confidence`、`raw_output_ref` 为空。公共 State/Trace
-不内嵌 token values、raw frames 或本机路径。
+历史 latent comparator 将 tokens 发布为独立 derived bundle，并通过 `Evidence.embedding_ref` 引用。ARCH-02
+主 Evidence 则通过 `Evidence.raw_output_ref` 指向 selected raw-frame manifest；公共 State/Trace 均不内嵌 payload。
 
-P4-06 只按 action order 保存 per-segment Evidence，不做 frame pooling 或同 item 多 segment 聚合；
-`ItemEvidenceState.evidence_embedding_ref` 在 P4 baseline 保持 `None`。P4-07 从各 manifest 加载完整 tokens，
-负责 learned frame/segment aggregation。Bundle 必须原子发布并完成 manifest/payload checksum、schema 和 identity
-校验后才可返回成功；任何 partial/missing/corrupt/cache mismatch 都 fail closed，不产生 Evidence、不改变排名。
+P4-06 只按 action order 保存 per-segment Evidence，不生成 item-level aggregate ref；P4-07 MLLM 直接读取
+action-ordered raw-frame refs。所有 raw/token bundles 都必须原子发布并校验 closure；partial/missing/corrupt/
+cache mismatch 均 fail closed，不产生 Evidence、不改变排名。
 
 ## 9.5 冻结策略
 
@@ -779,9 +839,29 @@ EvidenceBank = {
 
 ---
 
-# 11. 模块六：Small Candidate-aware Multimodal Reranker
+# 11. 模块六：Native-frame MLLM Candidate Reranker
 
-这是 V1 的最终重排主模型。
+这是 P4-ARCH-02 的最终重排主模型。
+
+## 11.0 Active 7—9B MLLM Contract
+
+```text
+SASRec user/prior + Dynamic Memory
++ Top-100 compact candidates
++ action-ordered selected raw-frame Evidence
++ acquisition Query/step
+    → native-frame 7—9B MLLM
+    → candidate marker hidden states
+    → shared scalar scoring head
+    → Top-100 numeric logits
+```
+
+约束：只观看已观察 segments；不观看全部候选视频；不生成 JSON/自然语言数字；输出覆盖全部候选；训练时
+随机 candidate serialization 并提供显式 identity/rank；每轮从 initial SASRec prior + full current EvidenceState
+纯函数式重算。第一版优先 LoRA/QLoRA，listwise CE + no-evidence prior consistency + mask/mismatch objectives。
+Exact model/revision/context/native frame packing/scoring head 由 P4-07 确认。
+
+## 11.H Historical Small Candidate Transformer Comparator
 
 ## 11.1 核心职责
 
@@ -862,7 +942,7 @@ RerankerOutput = {
 
 ---
 
-# 12. Small Multimodal Reranker 的 Label
+# 12. Native-frame MLLM Reranker 的 Label
 
 ## 12.1 主 Label
 
@@ -950,7 +1030,7 @@ Label: B
 
 ```text
 A: empty
-B: Segment 3 Deep Evidence
+B: Segment 3 Raw-frame Evidence
 C: empty
 D: empty
 Label: B
@@ -959,7 +1039,7 @@ Label: B
 ### State C：Observe Hard Negative
 
 ```text
-A: Segment 2 Deep Evidence
+A: Segment 2 Raw-frame Evidence
 B: empty
 C: empty
 D: empty
@@ -971,7 +1051,7 @@ Label: B
 ```text
 A: empty
 B: empty
-C: Segment 1 Deep Evidence
+C: Segment 1 Raw-frame Evidence
 D: empty
 Label: B
 ```
@@ -995,7 +1075,7 @@ Label: B
 
 ### State G：Shuffled Evidence
 
-将某个 Item 的 Evidence 替换为其他 Item 的 Segment Embedding，用于对抗训练和 sanity check。
+将某个 Item 的 Evidence 替换为其他 Item 的 raw-frame bundle/Query pair，用于对抗训练和 sanity check。
 
 ## 13.3 初始采样比例建议
 
@@ -1092,15 +1172,16 @@ observed = 1
 
 这里的 non-target 只表示该样本的真实 next item 不是它，不代表用户明确 dislike 该视频。Observation sampler 还必须平衡候选 rank、evidence count 与 target/non-target 的被观察概率，避免模型把 selector identity 当标签。
 
-Candidate Transformer 不得依赖候选序列化位置偷学 SASRec rank：训练时随机化 candidate token 的物理顺序，同时提供显式 rank feature；验证时增加 permutation-consistency 测试。
+MLLM candidate scoring head 不得依赖候选序列化位置偷学 SASRec rank：训练时随机化 candidate entries 的物理
+顺序，同时提供显式 identity/rank feature；验证时增加 permutation-consistency 测试。
 
 ## 14.3 必做 Sanity Checks
 
 | 设置 | 输入 | 预期结果 |
 |---|---|---|
-| Real Evidence | 真实 Segment Embedding | 最好 |
-| Zero Evidence | observed mask + zero embedding | 接近 No Evidence |
-| Shuffled Evidence | Segment 错配给其他 Item | 显著下降 |
+| Real Evidence | 真实 selected raw frames + acquisition Query | 最好 |
+| Zero Evidence | observed mask 但无合法 frame ref | 接近 No Evidence / fail closed |
+| Shuffled Evidence | Frames/Query 错配给其他 Item | 显著下降 |
 | Selector ID Only | 只告诉哪个 Item 被选 | 接近 Base |
 | Random Segment | 随机片段 | 弱于 Value Selection |
 | Random Item | 随机候选 | 弱于 Value Selection |
@@ -1115,7 +1196,7 @@ Candidate Transformer 不得依赖候选序列化位置偷学 SASRec rank：训�
 
 ## 15.1 No-evidence Consistency
 
-没有 Deep Evidence 时，Reranker 应接近 SASRec：
+没有成功 raw-frame Evidence 时，Reranker 应接近 SASRec：
 
 \[
 \mathcal L_{base}
@@ -1230,20 +1311,20 @@ Ground Truth Next Item Index
 Listwise CE + Optional Consistency Losses
 ```
 
-## Stage 4：冻结 Reranker，构造 Segment Value Labels
+## Stage 4：冻结 Native-frame MLLM Reranker，构造 Selector Labels
 
 ```python
 ranking_before = reranker(state)
-ranking_after = reranker(state.add(segment_deep_evidence))
+ranking_after = frozen_mllm_reranker(state.add(selected_raw_frame_evidence))
 value_label = utility(ranking_after) - utility(ranking_before) - cost
 ```
 
-## Stage 5：训练 Segment Value Model
+## Stage 5：训练 ≤1B Multimodal Segment Selector
 
 输入：
 
 ```text
-Recommendation State + Cheap Segment Proxy
+Recommendation State + Information Need + all eligible compact visual tokens
 ```
 
 Label：
@@ -1261,20 +1342,35 @@ Label：
 - 平均感知轮数；
 - 不同预算下的性能曲线。
 
-## Stage 7：可选交替训练
+## Stage 7：可选交替/联合训练（非第一版）
 
 ```text
-Value Model 采样新轨迹
-→ 更新 Reranker
+Selector 采样新轨迹
+→ 可选更新 Reranker
 → 重新计算 Value Label
-→ 更新 Value Model
+→ 更新 Selector
 ```
 
-V1 不建议直接上 RL。
+第一版不做该 Stage，也不建议直接上 RL。
 
 ---
 
-# 17. 主线 Agent Loop 伪代码
+# 17. 主线 Agent Loop
+
+P4-ARCH-02 active flow：
+
+```text
+build state and Information Need
+→ load Selector-owned compact visual refs for every eligible segment
+→ ≤1B Selector batch-scores all segments（no external CLIP shortlist）
+→ select global argmax
+→ publish canonical selected raw-frame Evidence
+→ ~8B native-frame MLLM scoring head reranks Top-100
+→ rebuild state and stop-or-repeat
+```
+
+每轮 MLLM 都从固定 `base_scores + 完整当前 raw-frame evidence_bank` 纯函数式重算。下面的 Python 代码保留为
+P4-ARCH-01 historical Small-latent pseudocode，不再是 active implementation recipe。
 
 ```python
 def active_multimodal_recommendation(
@@ -1373,13 +1469,13 @@ def active_multimodal_recommendation(
 
 ---
 
-# 18. LLM Reranker 对比支线
+# 18. Historical Structured-text MLLM/LLM Comparator
 
 该支线用于验证：
 
-> 将视频 Segment 转成文本 Evidence，再由 LLM 做复杂偏好推理，是否比 Latent Embedding + Small Reranker 更强？
+> 将视频 Segment 转成结构化文本 Evidence，是否比 ARCH-02 native raw-frame MLLM scoring 更有效或更可解释？
 
-它是对比方法，不是 V1 主线。
+它是对比方法，不是 ARCH-02 主线。
 
 ## 18.1 支线架构
 
@@ -1493,7 +1589,7 @@ SFT：
 
 ---
 
-# 19. 主线与 LLM 支线的公平比较
+# 19. ARCH-02 主线与容量/表征对比
 
 ## 19.1 必须统一
 
@@ -1505,32 +1601,32 @@ SFT：
 - 相同 Ground Truth；
 - 相同 Segment 切分。
 
-不能把由 Small Reranker gain labels 训练出的同一个 Segment Value Model 自动称为 LLM 分支的公平 selector。端到端对比若让各分支自行选段，应分别用各自冻结 downstream reranker 生成 value labels 并训练 branch-specific Value Model；Small latent 与 MLLM-text + LLM 同时改变 evidence representation 和 reranker，必须标为 system-level comparison。
+不能把由某个 downstream Reranker gain labels 训练出的同一个 Selector 自动称为其他分支的公平 selector。
+端到端对比若让各分支自行选段，应分别用各自冻结 Reranker 生成 labels 并训练 branch-specific Selector；
+固定相同 segments 的实验用于单独比较 evidence/reranker representation。
 
 ## 19.2 主要区别
 
-| 维度 | Small Multimodal Reranker | LLM Reranker |
-|---|---|---|
-| Segment 表示 | Deep Latent Tokens | MLLM 文本 Evidence |
-| 排序器 | 小型 Candidate Transformer | LLM |
-| 信息瓶颈 | 无文本转换 | 视频压缩为文本 |
-| 数值稳定性 | 强 | 一般 |
-| 高层语义推理 | 中等 | 强 |
-| 推理成本 | 低 | 高 |
-| 可解释性 | 较弱 | 强 |
-| 主线定位 | 是 | 对比/增强 |
+| 维度 | Native-frame ~8B MLLM | Small latent Reranker | Structured-text LLM |
+|---|---|---|---|
+| Segment 表示 | selected raw frames / native vision tokens | Chinese-CLIP/video tokens | MLLM text Evidence |
+| 排序器 | MLLM + scalar scoring head | 小型 Candidate Transformer | LLM/token ranking |
+| 数值输出 | direct tensor logits | direct tensor logits | token probability / structured output |
+| 高层语义推理 | 强 | 中等 | 强 |
+| 推理成本 | 高 | 低 | 高 |
+| 主线定位 | 是 | 容量/成本对比 | 表征/解释对比 |
 
 ## 19.3 推荐对比设置
 
 ```text
 A. SASRec Only
-B. SASRec + Random Segment + Small Reranker
-C. SASRec + Relevance Segment + Small Reranker
-D. SASRec + Value Segment + Small Reranker      ← 主方法
-E. SASRec + Value Segment + LLM Reranker        ← 强对比
-F. All-Segment Small Multimodal Reranker         ← Full-information reference
-G. Oracle Segment under same budget              ← Selection upper bound
-H. Full / Selected Segment MLLM + LLM Reranker  ← System-level semantic reference
+B. Query-relevance Segment + Native-frame MLLM
+C. CLIP-shortlist + learned Selector + Native-frame MLLM
+D. All-eligible ≤1B Selector + Native-frame MLLM   ← 主方法
+E. Same selected segments + Small latent Reranker  ← 容量/成本对比
+F. Same selected segments + Structured-text LLM   ← 表征/解释对比
+G. All-Segment reference where feasible
+H. Oracle Segment under same budget                ← Selection upper bound
 ```
 
 ---
@@ -1549,10 +1645,9 @@ H. Full / Selected Segment MLLM + LLM Reranker  ← System-level semantic refere
 ## 20.2 感知成本
 
 - Average Perceived Segments；
-- Average Deep-encoded Frames；
-- Segment Embedding Encoder FLOPs；
-- MLLM Calls；
-- Video Tokens；
+- Selector low-resolution frames / compact tokens / FLOPs；
+- Selected raw frames；
+- MLLM visual/text tokens and calls；
 - Average Latency；
 - GPU Memory；
 - Performance-Cost Curve。
@@ -1568,13 +1663,14 @@ H. Full / Selected Segment MLLM + LLM Reranker  ← System-level semantic refere
 
 ## 20.4 Reranker 消融
 
-- Independent Item Scorer vs Candidate-aware Transformer；
-- Average Pooling vs Preference Cross Attention；
-- Direct Embedding vs Preference Adapter；
+- Candidate-marker listwise head vs independent/chunked scoring；
+- Native image vs video API and multiple-Evidence packing；
+- 3B/8B/larger scale、LoRA/QLoRA/full tune；
 - Remove SASRec Prior；
 - Remove Base Consistency；
 - Remove observation balancing；
-- Small Reranker with No Evidence（容量控制）；
+- MLLM Reranker with No Evidence；
+- Small latent/text-only Reranker（容量控制）；
 - Zero / Shuffled Evidence；
 - Positive-only observation training。
 
@@ -1582,7 +1678,10 @@ H. Full / Selected Segment MLLM + LLM Reranker  ← System-level semantic refere
 
 # 21. 推荐代码目录
 
-以下目录仅表示职责映射，不授权创建第二个 `project/` 根。实际实现必须落在现有 `src/pave_rec`、`configs`、`tests` 与既有 CLI 中：Deep Segment Encoder 实现 `SegmentPerceiver`，per-segment latent bundle manifest 通过 `Evidence.embedding_ref` 引用；P4 的 `evidence_embedding_ref` 保持为空，由 P4-07 直接聚合各 Evidence tokens。Evidence Bank 使用 `EvidenceState`，observed mask 使用 `ObservationState`，Small Reranker 实现 `ScoreUpdater`，循环继续由 `AgentController` 驱动。
+以下目录仅表示职责映射，不授权创建第二个 `project/` 根。实际实现必须落在现有 `src/pave_rec`、`configs`、
+`tests` 与既有 CLI 中：raw-frame publisher 实现 `SegmentPerceiver`，frame manifest 通过
+`Evidence.raw_output_ref` 引用，model-specific tokens 可选使用 `embedding_ref`；≤1B Selector 实现
+`SegmentValueModel`，native-frame MLLM Reranker 实现 `ScoreUpdater`，循环继续由 `AgentController` 驱动。
 
 ```text
 project/
@@ -1702,33 +1801,34 @@ class SegmentValueTrainingExample:
 
 1. 用户序列与候选构造；
 2. SASRec Base Ranker；
-3. Segment 切分与 Cheap Proxy；
-4. Deep Video Feature Cache；
+3. Segment 切分与 selected raw-frame bundle；
+4. Native-frame MLLM input/candidate serialization；
 5. Observation State Sampler；
-6. Small Candidate-aware Multimodal Reranker；
-7. Listwise next-item 训练；
+6. 7—9B MLLM + candidate scoring head；
+7. LoRA/QLoRA listwise next-item 训练并冻结；
 8. Zero / Shuffled Evidence sanity check。
 
 ## Implementation Tier B：形成完整主线
 
-1. Segment Value Label 构造；
-2. Segment Value Model；
-3. Agent Loop；
-4. Stop Policy；
-5. Performance-Cost Curve。
+1. Frozen-MLLM counterfactual Segment Value Label 构造；
+2. Selector-owned compact visual token cache；
+3. ≤1B Multimodal Segment Selector；
+4. Agent Loop；
+5. Stop Policy；
+6. Performance-Cost Curve。
 
-## Implementation Tier C：LLM 对比支线
+## Implementation Tier C：容量与表征对比
 
-1. MLLM 结构化 Evidence 生成；
-2. LLM Reranker SFT；
-3. 与 Small Reranker 公平比较；
+1. Small latent/text-only Reranker；
+2. Chinese-CLIP relevance 与 CLIP-shortlist + Selector；
+3. 3B/8B/larger MLLM scale；
 4. 成本、语义能力和可解释性分析。
 
 ## Implementation Tier D：增强项
 
 - MLLM Teacher Distillation；
 - Full-information Oracle Reranker；
-- Value Model 与 Reranker 交替训练；
+- Selector 与 Reranker label-refresh/交替/联合训练；
 - RL Segment Policy；
 - 高不确定状态下 MLLM fallback。
 
@@ -1750,18 +1850,18 @@ class SegmentValueTrainingExample:
 - Mask Invariance；
 - Shuffled Evidence 测试。
 
-## 风险 2：Cheap Proxy 已包含全部深层信息
+## 风险 2：Selector compact tokens 已包含近似完整视频信息
 
 症状：
 
-- Value Model 直接用 Cheap Proxy 就能接近 Full Reranker；
-- Deep Segment Embedding 带来的增益很小。
+- Selector 读取过密/过高清 tokens 后本身接近 full-video reasoning；
+- 8B MLLM selected-frame Evidence 带来的增益很小。
 
 处理：
 
-- 降低 Cheap Proxy 密度和分辨率；
-- Deep Segment Embedding Encoder 使用更多帧和时序建模；
-- 明确两级感知成本。
+- 联合消融 Selector frame resolution/count/tokens-per-segment；
+- MLLM 使用更丰富但只属于 selected segment 的 raw frames；
+- 分别报告 Selector 与 Reranker 成本，维持两级感知边界。
 
 ## 风险 3：Reranker 完全忽略视频 Evidence
 
@@ -1791,14 +1891,14 @@ class SegmentValueTrainingExample:
 - 加入 Candidate Competition State；
 - 与 Relevance Selector 做强对比。
 
-## 风险 5：LLM 支线优势来自更大参数而非架构
+## 风险 5：主线收益只来自 8B 参数量或训练算力
 
 处理：
 
-- 统一候选与 Segment；
-- 报告成本；
-- 比较相同证据预算；
-- 将 LLM 作为强语义对比，不作为主线必要组件。
+- 统一候选、selected segments 和 frame budget；
+- 报告参数量、训练 GPU-hours、visual/text tokens、显存和 latency；
+- 比较 Small latent、3B/8B 与 text-only MLLM；
+- 分离 Selector 改进、视觉 Evidence 改进和 Reranker scale 改进。
 
 ---
 
@@ -1806,29 +1906,35 @@ class SegmentValueTrainingExample:
 
 主线可概括为：
 
-> 首先由 SASRec 基于用户行为历史生成候选先验排序，Dynamic Memory 在 Recommendation State 中提供独立的语义偏好表示；Information Need 从稳定/新兴/衰退兴趣与当前竞争格局中提炼信息缺口；随后，Recommendation-aware Segment Value Model 根据该 Need、当前候选状态、已有 Evidence 与 Cheap Segment Proxy，预测深入感知各未观察 Segment 的预期推荐收益；系统仅对最高价值 Segment 运行冻结 Segment Embedding Encoder，并默认将获得的 latent Evidence 输入 Small Candidate-aware Multimodal Reranker，对全体候选进行 Listwise 重排。该过程持续迭代，直至 Top-1 足够稳定、剩余 Segment 价值低于感知成本或预算耗尽。
+> 首先由 SASRec 基于用户行为历史生成 Top-100 先验，Dynamic Memory 与 Information Need 表达当前偏好缺口；
+> 随后，≤1B 多模态 Segment Selector 使用自己缓存的低清多帧 compact tokens，对全部 eligible segments 预测
+> expected recommendation gain，而不依赖独立 CLIP shortlist。系统只为最高价值 segment 发布 canonical 原始帧，
+> 约 8B native-frame MLLM 通过 candidate scoring head 读取当前全部已观察 Evidence，并对 Top-100 输出数值
+> logits。该过程持续迭代，直至 Top-1 足够稳定、剩余 segment 价值低于成本或预算耗尽。
 
 一句话版本：
 
-> **SASRec 提供行为先验，Memory + Information Need 表达当前偏好缺口，Segment Value Model 决定看什么，Encoder 只编码被选片段，Small Reranker 重算整个候选排序。**
+> **SASRec 提供行为先验，Memory + Query 定义信息缺口，≤1B 多模态 Selector 决定看什么，8B native-frame
+> MLLM 只看已选原始帧并重算 Top-100。**
 
-LLM 支线可概括为：
+训练顺序可概括为：
 
-> 将被选择的 Segment 通过 MLLM 转成结构化文本 Evidence，再由 LLM Reranker 进行复杂偏好推理和候选选择，用于验证语言推理相较 Latent Multimodal Reranking 的收益与成本。
+> **先训练并冻结 Reranker，再用它生成 counterfactual gain labels 和训练 Selector；第一版不联合训练。**
 
 ---
 
 # 26. 当前明确结论
 
-1. **V1 主模型使用 Small Candidate-aware Multimodal Reranker。**
-2. 每轮只为一个被选 Item-Segment 提取新的 Segment Embedding，但 Reranker 输入全体候选。
-3. Reranker 的主 label 是 Ground Truth Next Item，不需要 Segment 人工标签。
-4. 同一 Ground Truth 必须构造多种正负均衡的 Observation State。
-5. 被观察不代表加分，Delta Score 必须允许正、负和零。
-6. Segment Value Model 的 label 来自冻结 Reranker 后的观察前后推荐收益差。
-7. LLM Reranker 作为强对比支线，用于测试复杂语义推理能力，不作为主线依赖。
-8. Segment Embedding 可直接输入 Reranker；Preference-conditioned Evidence Adapter 为可选增强，需通过消融决定是否保留。
-9. 主线论文贡献应集中在 Recommendation-driven Active Perception 和 Segment Expected Recommendation Value，而不是集中在“大模型重排”。
-10. SASRec 粗召回不消费 Dynamic Memory；Memory 在 Information Need、Segment Value、可选 Adapter 和 Small Reranker 中使用。Memory-aware retrieval/fusion 是后续独立消融。
-11. validation/test 不注入 target；训练 target injection、conditional reranking 和 end-to-end retrieval 必须明确区分。
-12. `L_sens` 不作为 V1 强制 loss；Shuffled Evidence 只作 sanity check。All-Segment 是 full-information reference，同预算 Oracle Segment 才是 selection upper bound。
+1. **主线使用 ≤1B Multimodal Segment Selector + 约 8B native-frame MLLM Candidate Reranker。**
+2. Proposed Selector 不使用独立 CLIP shortlist，并对全部 eligible segments 输出 value。
+3. 每轮只为一个被选 Item-Segment 发布 raw-frame Evidence，但 Reranker 输入全体候选 compact state。
+4. Reranker 的主 label 是 Ground Truth Next Item，不需要 Segment 人工标签。
+5. 同一 Ground Truth 必须构造多种正负均衡的 Observation State；被观察不代表加分。
+6. Selector label 来自冻结 Reranker 后的观察前后推荐收益差，训练时分开保存 gain 与 cost。
+7. 在线顺序是 Selector → Reranker；训练依赖顺序是 Reranker → labels → Selector。
+8. 第一版不联合训练；alternating/distillation/joint/RL 属于 P6/P7。
+9. MLLM 通过 scoring head 输出 tensors，不生成自由文本/JSON scores。
+10. Small latent/text-only Reranker、Chinese-CLIP relevance 和 CLIP-shortlist + Selector 是主要对比。
+11. SASRec 粗召回不消费 Dynamic Memory；Memory 在 Information Need、Selector 和 MLLM Reranker 中使用。
+12. validation/test 不注入 target；conditional reranking 与 end-to-end retrieval 必须明确区分。
+13. All-Segment 是 full-information reference，同预算 Oracle Segment 才是 selection upper bound。

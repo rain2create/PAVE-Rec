@@ -28,7 +28,7 @@ Memory 模块内部维护完整 `UserMemoryState`，并向以下模块发布
 - Information Need
 - Segment Value Model
 - Deep Segment Perception / MLLM comparison branch
-- Small Candidate-aware Multimodal Reranker
+- native-frame MLLM Candidate Reranker
 
 ---
 
@@ -114,7 +114,9 @@ Information Need 消费 stable/emerging/fading、match score 和 drift 等派生
 如果确实需要完整 Matrix，可以通过 `similarity_matrix_ref` 从 Memory Store
 加载。
 
-Phase 4+ 的 Small Reranker 可以在组件内部通过 atom embedding refs 加载 semantic vectors，并与 SASRec user/item hidden、base score 和当前 latent Evidence 分别投影后融合。BGE-M3 semantic space 与 SASRec Item-ID embedding space 不兼容，不得直接相加或假设同一坐标系。
+Phase 4+ 的 native-frame MLLM Reranker 可以在组件内部通过 atom embedding refs 加载 semantic vectors，并与
+SASRec user/item hidden、base score 和当前 raw-frame Evidence 分别适配/融合。BGE-M3 semantic space 与
+SASRec Item-ID/MLLM hidden space 不兼容，不得直接相加或假设同一坐标系。
 
 一次 Agent run 内使用固定的 `UserMemoryView`。只有新的真实用户行为触发
 Memory 更新；对候选 segment 的 perception Evidence 不反向修改用户兴趣。
@@ -535,7 +537,10 @@ Dynamic Memory 前后，同 checkpoint/candidates 的 SASRec ranking 必须完�
 能稳定进入 Recommendation State 并满足后续 public-view-only consumption，不声称已经提高 NDCG。Memory
 next-item gain、interest-state agreement 和最终 benchmark 留到 Phase 6。
 
-P4+ 的预期消费链是：Memory → Recommendation State → Information Need → Segment Value selection，并在可选 preference adapter 与 Small Reranker 中直接影响最终重排。Memory 在一次 Agent run 内仍保持 immutable；新感知 Evidence 不回写 Memory，只有新的真实用户行为才生成下一版 snapshot。首版 SASRec 粗召回继续完全不消费 Memory，Memory-aware retrieval/fusion 只作为 Phase 7 独立实验。
+P4+ 的预期消费链是：Memory → Recommendation State → Information Need → Multimodal Segment Selector，并在
+native-frame MLLM Reranker 中直接影响最终重排。Memory 在一次 Agent run 内仍保持 immutable；新感知
+Evidence 不回写 Memory，只有新的真实用户行为才生成下一版 snapshot。首版 SASRec 粗召回继续完全不消费
+Memory，Memory-aware initial retrieval/fusion 只作为 Phase 7 独立实验。
 
 ### 11.3 First real aggregate audit (2026-08-04)
 

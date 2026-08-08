@@ -10,10 +10,10 @@
 1. 构建动态的用户偏好状态 `Dynamic User Preference State`。
 2. 使用传统序列推荐模型，以较低成本得到初始排序 `Cheap Initial Ranking`。
 3. 检查当前推荐状态 `Recommendation State`，判断当前排序还缺什么信息。
-4. 预测哪个未观察视频片段 `segment` 最有可能改善当前推荐决策。
-5. 只对这个片段运行冻结的 Deep Segment Encoder，得到可引用的 latent Evidence。
-6. 由 Small Candidate-aware Multimodal Reranker 同时读取 SASRec prior、Memory 和当前 Evidence。
-7. 对整个候选集合重新打分；MLLM 文本 Evidence + LLM Reranker 作为系统级对比支线。
+4. P4 先用 Query-relevance bootstrap，P5 再由 ≤1B 多模态 Segment Selector 对全部 eligible segments 预测 expected gain。
+5. 只对最终选择的片段发布 canonical raw-frame Evidence。
+6. 由约 8B native-frame MLLM Candidate Reranker 读取 SASRec prior、Memory、Top-100 compact candidates 和已观察原始帧。
+7. MLLM 通过 candidate scoring head 对整个候选集合输出数值 logits，不生成自由文本分数。
 8. 重复上述过程，直到排序已经足够确定，或者感知预算耗尽。
 
 整体核心 loop：
@@ -31,15 +31,15 @@ Should Stop?
    /          \
  Yes           No
   |             ↓
-Final      Segment Value Model
+Final      ≤1B Multimodal Selector
 Ranking          ↓
           select (item, segment)
                  ↓
-       Deep Segment Encoder
+       Selected Raw Frames
                  ↓
-       Latent Evidence Update
+       Frame Evidence Update
                  ↓
-   Small Multimodal Reranker
+  ~8B Native-frame MLLM Reranker
                  ↓
               Re-rank
                  ↓
@@ -66,30 +66,32 @@ TBD
 
 ### 2.2 Cheap path 与 Expensive path 分离
 
-Cheap path 包括：
+低成本/可缓存 path 包括：
 
 - 用户行为序列模型
 - embedding
 - lightweight item features
-- lightweight segment proxy features
-- 小型 ranking/value models
+- Selector-owned low-resolution multi-frame compact tokens
+- ≤1B discriminative Segment Selector（无独立 CLIP shortlist）
 
 Expensive path 包括：
 
-- 只对被选中的 segment 运行冻结 Deep Segment Encoder
-- 在 LLM 对比支线中，才对同一选中 segment 运行 MLLM 文本感知
+- 只对被选中的 segment 发布原始帧并运行约 8B native-frame MLLM Reranker
+- 记录 MLLM visual/text tokens、FLOPs、显存和 latency；不让 MLLM 观看 Top-100 全部视频
 
 ### 2.3 Perception 与 Ranking 分离
 
-主线 Deep Segment Encoder 的职责是输出：
+主线 `SegmentPerceiver` 的职责是输出：
 
 ```text
-Latent Segment Evidence reference
+Selected Raw-frame Evidence reference
 ```
 
-Small Candidate-aware Multimodal Reranker 实现既有 `ScoreUpdater`，从固定 SASRec base scores 与完整当前 EvidenceState 纯函数式重算全部候选分数。
+约 8B native-frame MLLM Candidate Reranker 实现既有 `ScoreUpdater`，从固定 SASRec base scores 与完整当前
+EvidenceState 纯函数式重算全部候选分数。它使用 candidate marker hidden states + shared scalar head，不通过
+自然语言/JSON 生成数字。Small latent/text-only Reranker 作为容量与成本对比。
 
-MLLM 结构化文本 Evidence + LLM Reranker 是后续强对比，不是主线依赖；两条分支均不得让感知模型直接读取 held-out target。
+训练依赖顺序固定为：先训练并冻结 Reranker，再产生 counterfactual gain labels 和训练 Selector；第一版不联合训练。
 
 ### 2.4 V1 先把整个 loop 跑通
 
@@ -101,7 +103,7 @@ mock candidate set
 mock SASRec scores
 mock segment proxies
 mock value scores
-mock MLLM evidence
+mock selected-frame evidence
 mock score update
 ```
 
@@ -252,15 +254,15 @@ Recommendation State
         ↓
 Information Need
         ↓
-Segment Value Model
+P4 Query-relevance / P5 ≤1B Selector
         ↓
 Best (item, segment)
         ↓
-       Deep Segment Encoder
+Selected Raw-frame Bundle
         ↓
-Latent Evidence Ref
+Frame Evidence Ref
         ↓
-Small Candidate-aware Reranker
+~8B Native-frame MLLM Reranker
         ↓
 Rerank
 ```
@@ -471,9 +473,10 @@ loop 内执行切分或批量特征提取。Fixture invocation 只用于复现 P
 - exact long/short matching threshold
 - memory decay / promote thresholds
 - P6 calibration/alternative aggregation and later learned Information Need beyond the confirmed P4-03 baseline
-- value-model neural architecture
+- exact ≤1B Selector model/vision tower/token compression architecture
 - expected recommendation gain label
-- score-update architecture
+- exact 7—9B MLLM/revision/scoring-head/LoRA/context architecture
+- counterfactual label sampling and later alternating/joint training
 - whether uncertainty uses margin only or richer uncertainty
 - whether RL is needed after supervised value learning
 

@@ -40,51 +40,57 @@ stable / emerging / fading update
 
 第一阶段可以先 offline 或 simulated。
 
-### Stage 4 — Build Deep-Evidence Small-Reranker Baseline
+### Stage 4 — Build Native-frame MLLM Reranker Data and Runtime
 
-建立第一条真实正预算主线：
+建立第一条真实正预算主线所需的基础数据与接口：
 
-- Rule-based Information Need baseline
-- heuristic/relevance-based Segment Value baseline
-- frozen Deep Segment Encoder `SegmentPerceiver`
-- per-segment latent Evidence bundle/refs；P4-06 不池化，frame/multi-segment aggregation 由 Small Reranker 学习
-- balanced Observation State dataset
-- Small Candidate-aware Multimodal Reranker `ScoreUpdater`
-- No-Evidence capacity baseline、zero/shuffled/mask/permutation sanity checks
-- score/stop compatibility and perception-cost artifacts
+- Rule-based Information Need 与 Query-relevance Segment Value bootstrap
+- selected raw-frame `SegmentPerceiver` bundle/refs
+- balanced split-safe Observation State dataset
+- Top-100 compact candidate serialization 与 acquisition Query/Memory context
+- native-frame MLLM `ScoreUpdater` adapter、candidate scoring head 和 score artifacts
+- No-Evidence、target/non-target、multi-item/segment、mismatch/shuffle/mask/permutation states
+- score/stop compatibility and Selector/MLLM perception-cost artifacts
 
-该阶段提供第一条可运行 baseline，不宣布最终 Information Need、Segment Value 或
-Stop Policy 研究方案；Small Reranker 是当前主线的第一版可训练 ScoreUpdater。
+### Stage 5 — Train and Freeze Native-frame MLLM Reranker
 
-### Stage 5 — Build Counterfactual Segment-Value Data
+- 从 7—9B class shortlist 中锁定 exact model/revision/processor/license；
+- 第一版使用 LoRA/QLoRA + shared candidate scoring head，不生成 score JSON；
+- primary listwise next-item loss + no-evidence prior consistency + mask/mismatch objectives；
+- 在 validation 上确认相对 SASRec、No-Evidence 和 Small-latent comparators 的有效稳定提升；
+- 冻结 exact Reranker checkpoint，作为后续 Selector utility teacher。
 
-对 sampled recommendation state 和 segment：
+### Stage 6 — Build Counterfactual Segment-Selector Data
 
-- 冻结 exact Deep Segment Encoder 与 Small Reranker
-- 加载或编码该 segment 的 latent Evidence
-- 从固定 SASRec base + 完整 EvidenceState 重算 before/after ranking
-- 保存 `Δ log p(target)`、cost 与辅助 rank metrics
+对 sampled recommendation state 和 stratified segment subset：
 
-### Stage 6 — Train Segment Value Model
+- 使用 canonical selected raw-frame Evidence；
+- 从固定 SASRec base + 完整 EvidenceState 重算 before/after ranking；
+- 使用冻结的 exact MLLM Reranker 保存 `Δ log p(target)`、cost 与辅助 rank metrics；
+- 分层覆盖 item rank、target/non-target、Query relation、duration/content diversity、random/hard negatives；
+- 不要求每个 state 穷举全部约 1200 segments，但必须记录 label coverage 和 sampling probability。
 
-学习：
+### Stage 7 — Train ≤1B Multimodal Segment Selector
 
 ```text
-state + information need + cheap segment proxy
+all eligible segment low-resolution multi-frame compact tokens
++ state + information need + Memory + SASRec rank/score
+→ query-conditioned local compression
+→ global segment scalar values
 → expected recommendation gain
 ```
 
-### Stage 7 — LLM Reranker System-level Comparison
-
-在主线稳定后，用相同选中 segments 比较 latent Evidence + Small Reranker 与 MLLM text Evidence + LLM Reranker。若比较两条端到端 selector，则分别用各自冻结 downstream reranker 生成 labels 并训练 branch-specific Segment Value Model；同时报告 matched/native frames、FLOPs、tokens、latency 与效果。
+Proposed Selector 不使用独立 CLIP shortlist；全部 eligible segments 必须得到输出。先冻结 vision tower 使用
+versioned content-token cache 训练 fusion/head，再选择性解冻后层并重建 final cache。
 
 ### Stage 8 — Integrate End-to-End Agent
 
 运行完整 active-perception loop。
 
-### Stage 9 — Optional RL
+### Stage 9 — Optional Alternating/Joint/RL Research
 
-只有 supervised system 稳定之后再考虑。
+第一条 baseline 不联合训练。只有 frozen-Reranker → Selector 的 supervised system 稳定后，才比较 label refresh、
+alternating tuning、distillation、soft selection、bandit/RL 或其他 joint approaches。
 
 ---
 
@@ -163,7 +169,9 @@ Uniform segment
 Top query-segment similarity
 Top item first
 Uncertainty-only heuristic
-Proposed Segment Value Model
+P4 Chinese-CLIP Query-relevance bootstrap
+CLIP-shortlist + learned Selector comparator
+Proposed ≤1B Multimodal Segment Selector（all eligible, no external shortlist）
 Oracle segment selection
 ```
 
@@ -186,18 +194,20 @@ Recommendation-aware Expected Value
 ```text
 w/o Dynamic Memory
 w/o Information Need
-w/o Segment Value Model
+w/o Multimodal Segment Selector
 w/o Active Stop
 w/o Evidence Update
-Small Reranker with No Evidence
+MLLM Reranker with No Evidence
+Small latent Reranker capacity comparator
+text-only MLLM Reranker
 fixed-frame perception
 full-video perception
 ```
 
 ### 6.1 Query-generation and frame-extraction ablations
 
-P4 的 Memory、candidate-aware Query、three-frame proxy 和 selected-segment deep-frame recipes 只定义第一条
-可复现 pipeline baseline。P6 必须把会改变 Query 的实验拆成两个主要轴：
+P4 的 Memory、candidate-aware Query、Chinese-CLIP bootstrap proxy 和 selected-frame recipe 只定义第一条
+可复现 pipeline baseline。P6 将 proposed Selector 与 MLLM Reranker 的 frame/token choices 拆成独立实验轴：
 
 ```text
 Query-generation / Memory axis
@@ -207,24 +217,32 @@ Query-generation / Memory axis
 - persistence/importance/state-transition recipes
 - concept vocabulary, IDF/cap, template, encoder and calibration
 
-Frame/perception axis
-- proxy source decode resolution and sparse high-resolution vs dense low-resolution
-- proxy frame count (3/6/8/12/16) and relative positions
-- uniform / medoid / scene-aware sampling
-- invalid-frame replacement and aggregation
-- proxy encoder
-- selected-segment deep frame count (4/8/16/32), sampling and token aggregation
+Selector visual-compression axis
+- low-resolution source decode and frame count (3/6/8/12/16)
+- uniform / medoid / scene-aware positions and invalid-frame replacement
+- Selector-owned vision tower/tokenizer and freeze/unfreeze recipe
+- compact tokens per frame/segment、query-conditioned resampler and cache identity
+- Selector size (100M/300M/500M/1B)、within-item segment context and cross-item global scorer
+- proposed all-eligible path vs CLIP-shortlist comparator
+- hierarchical cross-video Selector vs adapted single-video keyframe/clip selector baseline
+
+MLLM Reranker frame/context axis
+- selected raw-frame count (4/8/16/32), resolution and native image/video API
+- multiple observed-segment packing and Top-100 candidate context budget
+- 3B/8B/larger scale、LoRA/QLoRA/full-tune and vision freeze
+- scoring-head/residual calibration and text-only/Small-latent comparators
 ```
 
-Proxy frame count 与 aggregation 必须联合版本化和评估：帧数增加时固定 top-2 会扩大 multiple-comparisons bias。
-如果所有 proxy 最终仍由 official processor resize 到 224×224，低清 source decode 主要节省解码、缓存和传输，
-不会降低每帧 image-tower FLOPs；因此同时报告 decode resolution、processed frames、FLOPs、latency 和命中率。
-Deep-frame 实验与 proxy 实验分开进行，避免把“是否选对 segment”和“选中后读取了多少内容”的收益混在一起。
+Selector 不得把最多数千 raw images 拼进一个全局语言上下文；先在 segment 内编码/压缩，再只让 global scorer
+处理约 1200 个 segment-level tokens。低清 source decode、frame count、compact-token count 和 model FLOPs 必须
+联合报告。Selector frame/token 实验与 8B MLLM selected-frame/context 实验分开进行，避免把“是否选对 segment”
+和“选中后 Reranker 看了多少内容”的收益混在一起。
 
 正式协议先固定 frame side 比较 Memory/Query variants，再固定 Memory side 比较 frame variants，最后才组合各自
 最佳候选。每个 variant 使用独立 config、recipe/version 和 artifact identity，并在既定 user/time split 后
-重建兼容的 Memory、Query、proxy 和 Evidence artifacts。报告 Query fallback/candidate-difference/gap/stability、
-segment-selection 分布、ranking gain、frames/FLOPs、latency 和存储成本，不能只看最终 NDCG。
+重建兼容的 Memory、Query、Selector-token、raw-frame Evidence 和 Reranker artifacts。报告 Query fallback/
+candidate-difference/gap/stability、segment-selection 分布、Selector/MLLM frames/tokens/FLOPs、ranking gain、
+latency、peak memory 和存储成本，不能只看最终 NDCG。
 
 ---
 

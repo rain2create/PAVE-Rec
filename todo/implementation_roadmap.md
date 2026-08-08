@@ -502,17 +502,18 @@ full-catalog evaluation 均已实现并产生 exact real artifacts。首条 101-
 
 ---
 
-## 8. Phase 4 — Deep Segment Evidence and Small Multimodal Reranker Baseline
+## 8. Phase 4 — Selected-frame Evidence and Native-frame MLLM Reranker Baseline
 
 ### 目标
 
-接入真实按需视频感知路径，并用 Small Candidate-aware Multimodal Reranker 建立从 latent Evidence 到全候选重排的 baseline。
+接入真实按需视频感知路径，并训练约 8B native-frame MLLM Candidate Reranker，建立从 selected raw-frame
+Evidence 到 Top-100 数值重排的 baseline。
 
 ### Research Decision Gate
 
 Phase 4 开始实现前建立独立 discussion，首先确认 real active-path handoff：P3 Memory
-readiness、第一条 rule-based Information Need、真实候选可用的非学习式 Segment Value、
-冻结 Deep Segment Encoder/latent Evidence contract、Small Reranker、cost artifacts 和 StopPolicy
+readiness、第一条 rule-based Information Need、真实候选可用的 Query-relevance Segment Value bootstrap、
+selected-frame Evidence contract、native-frame MLLM Reranker、cost artifacts 和 StopPolicy
 兼容性。Phase 4 只确认第一条 baseline，不宣布最终研究公式或模型。
 
 ### 工作内容
@@ -520,20 +521,20 @@ readiness、第一条 rule-based Information Need、真实候选可用的非学�
 - Rule-based Information Need baseline
 - first normalized need vocabulary and deterministic need selection
 - heuristic/relevance-based Segment Value baseline for real candidates
-- frozen Deep Segment Encoder `SegmentPerceiver` adapter
+- selected raw-frame `SegmentPerceiver` adapter
 - exact base-release-bound derived media overlay and `MediaSubsetSegmentStore`
 - `scene-hybrid-v1` shot detection、semantic merge/split/cap and sparse anchor-frame recipe
 - frame/clip input resolver
 - P4 proxy baseline 使用 25%/50%/75% 最多三帧；低清多帧与其他密集采样留作 versioned P6 experiment
-- selected-segment eight-bin-center deep encoding recipe，保留 2—8 个真实有效 frame tokens 和 mask；不改变
+- selected-segment eight-bin-center raw-frame recipe，保留 2—8 张真实有效 RGB frames 和 mask；不改变
   P4-01 segmentation/anchor contract
-- per-segment latent bundle（manifest + FP32 `[F,512]` NPY）、`Evidence.embedding_ref`、checksum closure、
+- per-segment raw-frame bundle、`Evidence.raw_output_ref`、checksum closure、
   atomic publication 和 typed failure contract
 - balanced Observation State sampler，包含 No-Evidence/target/non-target/multi-item/shuffled states
-- Small Candidate-aware Multimodal Reranker as the existing `ScoreUpdater`
-- no-evidence consistency、mask invariance 和 permutation-consistency checks
-- Evidence State 保留 action-ordered per-segment refs；P4-06 不池化，frame/multi-segment aggregation 由
-  Small Reranker 负责，`evidence_embedding_ref=null`
+- 7—9B native-frame MLLM + candidate scoring head as the existing `ScoreUpdater`
+- LoRA/QLoRA baseline、listwise CE、no-evidence prior consistency、mask/mismatch/permutation checks
+- Evidence State 保留 action-ordered per-segment frame refs；P4-06 不池化，MLLM 原生读取已观察 frames，
+  `evidence_embedding_ref=null`
 - perception cost logging
 - Mock Score Updater 的一致性基线
 - fixed-base-score + full-current-Evidence pure recomputation，禁止递归累计 previous scores
@@ -545,28 +546,29 @@ readiness、第一条 rule-based Information Need、真实候选可用的非学�
 - perceived segment count
 - segment duration
 - processed frames
-- encoder FLOPs / video tokens
+- raw frames、MLLM visual/text tokens、selector/bootstrap FLOPs
 - latency
-- model name and version
+- peak memory、model/scoring-head/LoRA/quantization versions
 
 ### 验收标准
 
 - 只有被选择的 segment 触发昂贵感知
 - Information Need 从 Recommendation State 产生且不预先绑定某个 item
 - 第一条真实 loop 不依赖 `mock-v1` fixture keys 选择 segment
-- Deep Encoder 只产生 latent Evidence；Small Reranker 对全部候选共同重排
+
+- Perceiver 只发布 selected raw-frame Evidence；约 8B MLLM 对全部候选共同输出数值 scores
 - encoding/ref failure 有明确状态，不会静默污染 ranking
 - 没有 Evidence 时输出接近 SASRec prior；未观察 item 仍参与候选集合级重排
 - 同一 Evidence 可以离线重放 score update
-- failed perception 不产生 Evidence、不调用 ScoreUpdater；saved replay 缺失/损坏 artifact 时 fail closed，不重跑 Encoder
-- latent/cost logging 不改变既有 Phase 1 State/Trace 语义
+- failed perception 不产生 Evidence、不调用 ScoreUpdater；saved replay 缺失/损坏 artifact 时 fail closed，不重跑 decode/MLLM
+- frame/model-output/cost logging 不改变既有 Phase 1 State/Trace 语义
 
 ### 本阶段保留为可替换策略
 
-- exact frozen video/image encoder
-- reranker architecture/capacity
-- direct latent Evidence vs preference-conditioned adapter
-- MLLM textual Evidence + LLM Reranker（Phase 6 system-level comparison）
+- exact 7—9B MLLM/revision/native frame API
+- candidate scoring-head/residual architecture、context packing and LoRA/QLoRA recipe
+- raw frames vs model-native token cache
+- Small latent Reranker and text-only Reranker（Phase 6 comparators）
 
 ### 当前状态
 
@@ -579,24 +581,26 @@ authorization boundary 见 `todo/phase_4_discussion.md`。
 
 ---
 
-## 9. Phase 5 — Oracle Data and Supervised Segment Value Model
+## 9. Phase 5 — Counterfactual Data and ≤1B Multimodal Segment Selector
 
 ### 目标
 
-冻结 P4 Deep Encoder 和 Small Reranker，从反事实观察前后差构建 expected-gain 数据，训练推荐决策感知的
-Segment Value Model。
+冻结 P4 selected-frame pipeline 和 exact native-frame MLLM Reranker，从反事实观察前后差构建 expected-gain
+数据，训练无独立 CLIP shortlist 的 ≤1B 多模态 Segment Selector。
 
 ### 工作内容
 
 - sampled Recommendation State builder
-- candidate segment enumeration
-- frozen Deep Segment Evidence lookup/encoding pipeline
-- fixed Small Reranker before/after ranking simulation
+- full eligible candidate segment enumeration
+- stratified counterfactual label subset / hard-negative sampler
+- canonical selected raw-frame Evidence lookup/publication pipeline
+- fixed native-frame MLLM Reranker before/after ranking simulation
 - primary `Δ log p(target) - λ cost` label，并分开保留 gain/cost 便于重算
-- value-model dataset and split
-- simple MLP baseline
-- regression / pairwise loss adapters
-- offline value-model evaluation
+- Selector-owned low-resolution multi-frame tokenizer/cache artifacts
+- query-conditioned per-segment compression + global segment scorer
+- partial-label regression / pairwise / listwise loss adapters
+- MLP、Query-relevance 和 CLIP-shortlist comparators
+- offline Selector evaluation
 
 ### 主要指标
 
@@ -609,17 +613,19 @@ Segment Value Model。
 ### 验收标准
 
 - Label 可以追溯到 state、segment、evidence 和 score-updater version
-- Value Model 只读取 online 可用的 cheap features
+- Selector 只读取 online 可用的 Memory/state/Query 与 versioned compact visual tokens
+- Proposed Selector 对全部 eligible segments 输出 value，不依赖外部 CLIP shortlist
 - Agent Controller 无需修改即可从 Mock Value 切换到 supervised model
 - 能与 relevance-only 和 random selection 做同预算比较
 
 ### 本阶段保留为可替换策略
 
 - 最终 expected-gain label
-- model architecture
+- exact Selector model/vision tower/size/token compression
 - loss
-- negative sampling
+- label sampling/hard negatives
 - value uncertainty
+- joint/alternating training（不属于第一版）
 
 ---
 
@@ -638,8 +644,9 @@ Segment Value Model。
 - Agent ablations
 - memory evaluation
 - Query-generation/Memory horizon ablations（recent window、decay half-life、active atoms、importance/state recipe）
-- proxy/deep frame extraction ablations（source resolution、sparse high-resolution vs dense low-resolution、
-  3/6/8/12/16 proxy frames、4/8/16/32 deep frames、positions、sampling、aggregation、encoder）
+- Selector visual-compression ablations（3/6/8/12/16 low-resolution frames、vision tower、tokens/frame/segment、
+  100M/300M/500M/1B scale、all-eligible vs CLIP-shortlist comparator）
+- MLLM Reranker ablations（4/8/16/32 raw frames、3B/8B/larger scale、LoRA/full tune、context/scoring head）
 - one-axis-at-a-time protocol、variant-specific artifact identities 和 final best-combination evaluation
 - value-model evaluation
 - experiment config snapshots
@@ -654,11 +661,12 @@ Segment Value Model。
 - Query-segment similarity
 - Top-item-first
 - Uncertainty-only
-- Proposed Segment Value Model
+- Proposed ≤1B Multimodal Segment Selector
 - Oracle selection
 - Full-video perception where feasible
-- Small Reranker with No Evidence（模型容量控制）
-- Small latent reranker vs MLLM-text + LLM reranker system-level comparison
+- MLLM Reranker with No Evidence
+- Small latent/text-only reranker capacity comparators
+- sequential frozen-Reranker training vs alternating/joint Selector-Reranker experiments
 
 ### 验收标准
 
@@ -679,7 +687,8 @@ Segment Value Model。
 - Dynamic Memory and SASRec fusion
 - richer or learned ranking uncertainty
 - Memory-aware initial retrieval / Dynamic Memory and SASRec fusion
-- joint or larger Evidence Reranker
+- alternating/joint Selector-Reranker training
+- larger MLLM Reranker
 - learned stopping
 - joint segment-selection and stop action
 - value uncertainty and risk-aware selection
@@ -698,7 +707,7 @@ Segment Value Model。
 1. Candidate selection 在 item 和 segment 两个维度上联合进行。
 2. Information Need 在 segment selection 前不绑定具体 item。
 3. Expensive perception 只作用于已选择 segment。
-4. 主线 Deep Encoder 只产生 latent Evidence；MLLM 文本分支也不直接读取标签或绕过 reranker。
+4. 主线 Perceiver 只发布 selected raw-frame Evidence；MLLM Reranker/Selector 都不读取 held-out label 或 future feedback。
 5. Initial ranking prior 在整个 Agent loop 中有明确保留方式。
 6. Recommendation State 是每一步完整、可记录的状态快照。
 7. 所有停止行为都有结构化 reason。
@@ -720,10 +729,9 @@ Segment Value Model。
 | Preference Atom、matching、EMA、promotion、decay | Phase 3 | Phase 6 Memory evaluation; optional Phase 7 learned/fused Memory |
 | SASRec split、negative sampling、candidate scoring | Phase 3 | Phase 6 recommendation experiments |
 | Information Need vocabulary and estimator | Phase 4 rule-based baseline, with Phase 3 Memory readiness | Phase 6 ablation; Phase 7 learned estimator |
-| Deep Encoder、selected-segment frames、latent Evidence refs | Phase 4 | Phase 6 cost/quality ablations |
-| score update and evidence aggregation | Phase 4 Small Candidate-aware Multimodal Reranker | Phase 6 evaluation; Phase 7 joint/larger reranker |
-| MLLM text Evidence + LLM reranker | none in Phase 4 mainline | Phase 6 system-level comparison |
-| Oracle、expected-gain label、Value architecture/loss | Phase 5 supervised baseline | Phase 6 evaluation; Phase 7 uncertainty/risk/RL extensions |
+| selected raw frames、Evidence refs、model-token caches | Phase 4 | Phase 6 frame/token/cost ablations |
+| score update | Phase 4 native-frame 7—9B MLLM Reranker | Phase 6 scale/tuning evaluation; Phase 7 larger/joint reranker |
+| Oracle、expected-gain label、≤1B Selector architecture/loss | Phase 5 sequential frozen-teacher baseline | Phase 6 scale/CLIP-shortlist/joint ablations; Phase 7 uncertainty/risk/RL |
 | ranking uncertainty and stopping | Phase 3 score-scale compatibility; Phase 4 active-path thresholds | Phase 6 ablation; Phase 7 learned/joint stop policy |
 | Memory–SASRec fusion | Phase 3 explicitly separate | Phase 7 optional advanced research |
 | reinforcement learning | none in Phases 1—6 | Phase 7 only after supervised system is stable |
