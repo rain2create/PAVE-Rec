@@ -531,8 +531,9 @@ selected-frame Evidence contract、native-frame MLLM Reranker、cost artifacts �
 - per-segment raw-frame bundle、`Evidence.raw_output_ref`、checksum closure、
   atomic publication 和 typed failure contract
 - balanced Observation State sampler，包含 No-Evidence/target/non-target/multi-item/shuffled states
-- 7—9B native-frame MLLM + candidate scoring head as the existing `ScoreUpdater`
-- LoRA/QLoRA baseline、listwise CE、no-evidence prior consistency、mask/mismatch/permutation checks
+- `Qwen3-VL-8B-Instruct` packed native-frame `ScoreUpdater` + 100 candidate-token single-step logits
+- full-parameter listwise CE baseline、no-evidence prior consistency、mask/mismatch/permutation checks；
+  pointwise Qwen3-VL-Reranker、ZipRerank warm-start/QI-EI 和 LoRA/QLoRA 只作消融
 - Evidence State 保留 action-ordered per-segment frame refs；P4-06 不池化，MLLM 原生读取已观察 frames，
   `evidence_embedding_ref=null`
 - perception cost logging
@@ -565,8 +566,8 @@ selected-frame Evidence contract、native-frame MLLM Reranker、cost artifacts �
 
 ### 本阶段保留为可替换策略
 
-- exact 7—9B MLLM/revision/native frame API
-- candidate scoring-head/residual architecture、context packing and LoRA/QLoRA recipe
+- exact Qwen3-VL-8B-Instruct revision/processor、100-token schema 和 native frame API
+- packed context、candidate-token logits/SASRec residual fusion 和 full-parameter training recipe
 - raw frames vs model-native token cache
 - Small latent Reranker and text-only Reranker（Phase 6 comparators）
 
@@ -730,7 +731,7 @@ authorization boundary 见 `todo/phase_4_discussion.md`。
 | SASRec split、negative sampling、candidate scoring | Phase 3 | Phase 6 recommendation experiments |
 | Information Need vocabulary and estimator | Phase 4 rule-based baseline, with Phase 3 Memory readiness | Phase 6 ablation; Phase 7 learned estimator |
 | selected raw frames、Evidence refs、model-token caches | Phase 4 | Phase 6 frame/token/cost ablations |
-| score update | Phase 4 native-frame 7—9B MLLM Reranker | Phase 6 scale/tuning evaluation; Phase 7 larger/joint reranker |
+| score update | Phase 4 Qwen3-VL-8B-Instruct packed Listwise Reranker | Phase 6 pointwise/warm-start/QI-EI/scale/tuning evaluation; Phase 7 larger/joint reranker |
 | Oracle、expected-gain label、≤1B Selector architecture/loss | Phase 5 sequential frozen-teacher baseline | Phase 6 scale/CLIP-shortlist/joint ablations; Phase 7 uncertainty/risk/RL |
 | ranking uncertainty and stopping | Phase 3 score-scale compatibility; Phase 4 active-path thresholds | Phase 6 ablation; Phase 7 learned/joint stop policy |
 | Memory–SASRec fusion | Phase 3 explicitly separate | Phase 7 optional advanced research |

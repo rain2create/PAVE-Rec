@@ -315,16 +315,17 @@ Top-100 scores and stop-or-repeat
    processor 和 media checksum。训练中修改 vision tower 后旧 cache 立即失效；冻结发布后重建 canonical cache。
 4. P4-04 Chinese-CLIP Query-relevance global argmax 保留为未训练 Selector 前的 bootstrap、baseline 和消融，
    不进入最终 proposed Selector 的前置筛选。Chinese-CLIP proxy artifact 也不等于 Selector-owned token cache。
-5. 选中一个 segment 后，Perceiver 发布 canonical raw RGB frame bundle。约 8B（7—9B class，exact model 待
-   P4-07 确认）的 MLLM Reranker 使用自己的 native visual processor/vision tower 读取原始帧，不要求把
-   Chinese-CLIP `[F,512]` tokens 适配进语言模型。
-6. MLLM Reranker 实现既有 `ScoreUpdater`：输入 Top-100 compact candidate state、SASRec score/rank、Memory、
-   acquisition Query 与全部当前 observed frame Evidence；通过 candidate scoring head 一次输出 candidate logits，
-   不用自由文本/JSON 生成数字。首个 baseline 保留 SASRec prior，输出 learned bounded residual 或等价的
-   prior-preserving logits；每轮从 initial prior + full current EvidenceState 纯重算，不递归累计 previous scores。
-7. 约 8B Reranker 先使用 split-safe Observation State data 训练并固定版本；第一版优先 LoRA/QLoRA，full
-   fine-tuning 只作后续容量实验。训练覆盖 no-evidence、target/non-target evidence、不同 rank/evidence count、
-   multi-item/multi-segment、mask 和 mismatched/shuffled Evidence states。
+5. 选中一个 segment 后，Perceiver 发布 canonical raw RGB frame bundle。`Qwen3-VL-8B-Instruct` Listwise
+   Reranker 使用自己的 native visual processor/vision tower 读取原始帧，不要求把 Chinese-CLIP `[F,512]`
+   tokens 适配进语言模型。
+6. Reranker 实现既有 `ScoreUpdater`：输入 Top-100 compact candidate state、SASRec score/rank、Memory、
+   acquisition Query 与全部当前 observed frame Evidence；参考 ZipRerank single-token scoring，在一次 packed
+   forward 的最终位置直接读取 100 个 candidate-token logits，不用自由文本/JSON 生成数字。首个 baseline
+   保留 SASRec prior；每轮从 initial prior + full current EvidenceState 纯重算，不递归累计 previous scores。
+7. Reranker 从原始 `Qwen3-VL-8B-Instruct` checkpoint 开始做 split-safe full-parameter recommendation ranking
+   training 并固定版本。ZipRerank checkpoint/QI-EI、LoRA/QLoRA 和 vision-freeze 只作消融；原生
+   `Qwen3-VL-Reranker-8B` 只作 pointwise baseline。训练覆盖 no-evidence、target/non-target evidence、
+   不同 rank/evidence count、multi-item/multi-segment、mask 和 mismatched/shuffled Evidence states。
 8. Reranker 冻结后才生成 Selector labels。对 sampled states 和 stratified segment subsets 计算
    `Δ log p(target) - λ cost`，保存 raw gain/cost，再训练 ≤1B Selector 预测 expected recommendation gain。
    Label builder 不要求对每个 state 的约 1200 segments 全部运行一次 8B Reranker；采样规模与 hard-negative
@@ -351,13 +352,13 @@ Top-100 scores and stop-or-repeat
 ```text
 Decision ID: P4-ARCH-02
 Status: Confirmed
-Decision: 最终 proposed selection 使用无独立 CLIP 前筛的 ≤1B 判别式多模态 Segment Selector；Selector 对全部 eligible segments 的低清多帧 compact tokens 做 query-conditioned compression 和全局 scalar scoring。最终选择的 segment 发布 raw-frame Evidence，约 8B native-frame MLLM Reranker 通过 scoring head 对 Top-100 输出分数。第一版先训练并冻结 Reranker，再生成 counterfactual gain labels 和训练 Selector；不从零联合训练。
+Decision: 最终 proposed selection 使用无独立 CLIP 前筛的 ≤1B 判别式多模态 Segment Selector；Selector 对全部 eligible segments 的低清多帧 compact tokens 做 query-conditioned compression 和全局 scalar scoring。最终选择的 segment 发布 raw-frame Evidence，`Qwen3-VL-8B-Instruct` Listwise Reranker 将 Top-100 compact candidates 与累计 Evidence packed 到一次前向，并在最终位置读取 100 个 candidate-token logits。第一版先训练并冻结 Reranker，再生成 counterfactual gain labels 和训练 Selector；不从零联合训练。
 Rationale: Selector 的 expected-gain target 必须由有效且固定的 downstream Reranker 定义。Selector-owned compact token path 可以避免把数千 raw images 塞进一个上下文，同时仍让全部 segments 参与 proposed selection；8B MLLM 只读取少量已选 segment 原始帧，从而把多图复杂推理成本限制在每个 action 一次。
 Alternatives considered: CLIP shortlist 后再用 Selector；1B MLLM 一次拼接全部 raw frames；继续使用 Chinese-CLIP latent tokens + Small Reranker；把 Chinese-CLIP tokens 通过新 adapter 注入 8B MLLM；生成式 JSON score；从零联合训练 Selector/Reranker。
 Affected schemas/interfaces: 复用 `SegmentValueModel`、`SegmentValueInput`、`SegmentValue`、`SegmentPerceiver`、`Evidence`、`EvidenceState`、`ScoreUpdater` 和 Controller 顺序。`segment_proxy_ref` 可指向 Selector-owned compact-token manifest；selected-frame Evidence 使用 external raw-frame bundle ref；model-specific tokens/output 只通过 versioned artifacts/metadata 关联。
 Affected docs/tests: README.md；todo/phase_4_discussion.md；todo/implementation_roadmap.md；docs/00_shared_domain_schemas.md；docs/05_segment_value_model.md；docs/07_evidence_score_update.md；docs/10_evaluation_and_training_plan.md；docs/active_multimodal_reranker_engineering_spec.md；后续测试覆盖 full eligible coverage、token-cache identity、query-conditioned compression、raw-frame ref、native-frame MLLM scoring、no-generation output、prior preservation、split-safe observation data、frozen-teacher labels 和 no-joint baseline。
 Resolved follow-up: proposed Selector/Reranker roles、无 CLIP 前筛、raw-frame MLLM input、training/inference order 和 first-stage no-joint boundary。
-Deferred follow-up: P4-07 exact MLLM family/revision/context/scoring head/LoRA data；P5 exact Selector family/size/token count/frame recipe/label sampling；P6 scale/cost/CLIP-shortlist/joint-training ablations；P7 policy/RL extensions。
+Deferred follow-up: P4-07 exact Qwen3-VL revision/processor、100-token schema、packed context、full-tune/data/loss/calibration；P5 exact Selector family/size/token count/frame recipe/label sampling；P6 scale/cost/pointwise/ZipRerank-warm-start/CLIP-shortlist/joint-training ablations；P7 policy/RL extensions。
 Confirmed by: User
 Date: 2026-08-07
 ```
@@ -856,7 +857,7 @@ Small-latent comparator 保留，不再是最终 proposed path。
 3. Canonical selected-frame bundle 是 content-only、user/query independent、可跨 run 复用的受控本地 artifact；
    Selector-owned compact tokens 和 MLLM-native vision tokens 必须作为独立 derived artifacts，分别绑定 exact
    checkpoint/processor，不能覆盖 raw-frame identity。
-4. 约 8B MLLM 的 native vision tower、language backbone 和 scoring head 属于 P4-07 `ScoreUpdater`，不是
+4. Qwen3-VL 的 native vision tower、language backbone 和 candidate-token LM head 属于 P4-07 `ScoreUpdater`，不是
    `SegmentPerceiver`。Reranker call 的显存、视觉 tokens、文本 tokens、latency 和 cache 均单独计入 P4-08 cost。
 
 ### 8.1 要解决的问题
@@ -1049,11 +1050,12 @@ Date: 2026-08-06
 
 ## 10. P4-07 — Native-frame MLLM Candidate Reranker
 
-Status: `Pending`
+Status: `In Discussion — model/output direction confirmed`
 
-P4-ARCH-02 已确认约 8B native-frame MLLM Reranker 是主线 `ScoreUpdater`。本 Gate 仍待确认 exact model/
-revision、native frame/context contract、candidate scoring head、LoRA/QLoRA recipe、Observation State dataset、
-loss/calibration 和租卡资源画像。
+P4-ARCH-02 已确认 native-frame MLLM Reranker 是主线 `ScoreUpdater`。P4-07 当前已锁定
+`Qwen3-VL-8B-Instruct`、packed Top-100 listwise input、ZipRerank-style single-token candidate logits、原始 Qwen
+checkpoint 初始化和 full-parameter training 方向；本 Gate 仍待确认 exact revision/processor、100-token schema、
+native frame/context contract、Observation State dataset、loss/prior fusion/calibration 和训练资源配置。
 
 ### 10.1 要解决的问题
 
@@ -1087,56 +1089,60 @@ new_score_i = initial_raw_score_i + lambda * state_score_scale * aggregate_signa
 7. 第一版不跨 item 联动更新，不训练 unified reranker。Score output 继续精确覆盖全部 candidates 并稳定 rerank。
 8. P4 初期关闭 raw-margin certainty stop；只有 validation-only calibration 后才能给 real score 设阈值。
 
-### 10.3 当前推荐 baseline 与待确认项
+### 10.3 已确认的主线与待确认项
 
-1. Model family 只从支持离线部署、native multi-image/video、hidden-state/scoring-head fine-tuning、明确许可和
-   租卡显存可承载的 7—9B class MLLM 中选择；exact model card、revision、processor、context limit、license、
-   flash-attention/quantization compatibility 必须实测后再锁定，不能凭模型名猜测。
-2. Reranker 只读取 EvidenceState 中已成功观察 segments 的 canonical raw frames；未观察候选只提供 compact
-   item text/category/tag、SASRec item/base features、score/rank 和 mask。禁止为了 rerank 把 Top-100 全部视频帧
-   输入 MLLM，否则主动感知成本边界失效。
-3. 输入包含 SASRec user hidden/history projection、Dynamic Memory compact atoms、Top-100 compact candidates、
-   每个 observed Evidence 的 acquisition Query/step 和 native frames。所有用户/候选文本均按 untrusted data
-   delimiter 处理；不包含 target、future feedback、Oracle gain 或绝对路径。
-4. 输出使用 candidate marker hidden states + shared scalar scoring head，一次返回与 Top-100 一一对应的 logits；
-   不通过 autoregressive JSON/自然语言生成分数。Candidate order 在训练中随机化，并显式提供 original rank/
-   candidate identity；测试 permutation consistency 和 stable identity tie-break。
-5. 首个 prior-preserving score contract 建议为 `final_i = base_i + alpha * tanh(delta_i)` 或数学等价的 bounded
-   residual head；exact alpha/normalization 只在 validation 校准。每轮从 initial SASRec base + full current
-   EvidenceState 重算，不输入 previous current scores。
-6. 先按 user/time split，再在 train 内构造 Observation State variants：no-evidence、target evidence、不同 rank
-   non-target evidence、multi-item/multi-segment、不同 evidence count、hard negative、mismatched/shuffled frames/
-   queries。Validation/test 不 target-inject，并同时报告 conditional Top-100 reranking 与 end-to-end retrieval。
-7. 第一版优先 parameter-efficient tuning：冻结或部分冻结 native vision tower，以 LoRA/QLoRA 调整 projector/
-   language blocks/scoring head；full fine-tuning、vision unfreeze 和 3B/8B/更大 scale 属于 P6 cost/capacity ablation。
-8. Primary loss 为 Top-100 listwise next-item CE；同时加入 no-evidence prior consistency、mask invariance 和
-   evidence-query mismatch/shuffle contrastive objective。Loss weights、candidate packing/chunking、max observed
-   frames/context、optimizer、batch/gradient accumulation 和 early stopping 仍需 P4-07 确认。
-9. Reranker 必须先取得相对 SASRec/no-evidence/Small-latent baselines 的有效且稳定 validation 表现并冻结 exact
-   checkpoint；之后 P5 才使用它生成 Segment Selector counterfactual labels。P4/P5 baseline 不联合训练。
+1. 主 checkpoint 从原始 `Qwen3-VL-8B-Instruct` 开始，不默认续训 ZipRerank 权重；ZipRerank checkpoint 只作
+   warm-start ablation，使用前必须核对 derivative-checkpoint license。原生 `Qwen3-VL-Reranker-8B` 是
+   pointwise Top-100 baseline，不是 proposed mainline。
+2. 每个 Agent step 只运行一次 packed MLLM forward：共享 Query 由 Dynamic Memory compact atoms + 当前
+   Information Need 构成；Top-100 均提供 compact item text/category/tag，只有已成功观察 items 携带 action-ordered
+   acquisition Query/step 和 canonical native frames。禁止把 Top-100 全部候选视频帧输入 MLLM。
+3. 输出参考 ZipRerank single-token logits decoding：为当前序列化位置提供 100 个专用 candidate tokens，在完整
+   packed prompt 的最终 scoring position 直接 gather `[B,100]` vocabulary logits；不做 autoregressive ranking
+   generation，也不把 candidate-marker hidden states 交给额外大型 Global Transformer。
+4. Candidate order 在训练中随机化，candidate token 只标识当前 list position；original SASRec rank/identity 通过
+   显式字段或数值 side features 保留，并测试 permutation consistency 与 stable identity tie-break。
+5. Reranker 每轮从 initial SASRec base + full current EvidenceState 纯函数式重算。首个 prior-preserving contract
+   候选仍是 `final_i = base_i + alpha * tanh(delta_i)` 或数学等价形式，但 exact normalization/alpha 和是否直接
+   使用 candidate-token logits 作为 final logits 尚待确认。
+6. 先按 user/time split，再在 train 内构造 no-evidence、target evidence、不同 rank non-target evidence、
+   multi-item/multi-segment、不同 evidence count、hard negative、mismatched/shuffled frame-query 等 Observation
+   State variants；Validation/test 不 target-inject，并分别报告 conditional reranking 与 end-to-end retrieval。
+7. Proposed mainline 做 full-parameter recommendation ranking fine-tuning；exact vision-tower schedule、optimizer、
+   distributed strategy、batch/gradient accumulation、checkpointing 和 early stopping 尚待确认。LoRA/QLoRA、
+   vision-freeze 和 ZipRerank warm-start 只作效率/初始化消融。
+8. Primary objective 候选是 Top-100 next-item listwise CE，并加入 no-evidence prior consistency、mask invariance、
+   mismatch/shuffle objectives；是否增加 RankNet、SASRec/teacher soft-ranking distillation 及各 loss weight 尚待确认。
+9. QI-EI patch pruning 不进入第一版主线：Selector 已完成 segment-level pruning，Reranker 首先依赖 frame count、
+   resolution、最多三轮和 single-token logits 控制成本。只有累计 Evidence token 成为瓶颈时，才在 P6 比较 QI-EI。
+10. Reranker 必须先取得相对 SASRec、no-evidence、pointwise Qwen3-VL-Reranker 和 Small-latent baselines 的稳定
+    validation 提升并冻结 exact checkpoint；之后 P5 才使用它生成 Selector counterfactual labels。第一版不联合训练。
 
-### 10.4 下一轮需要逐项确认
+### 10.4 P4-07 剩余需要逐项确认
 
-- exact 7—9B MLLM shortlist、许可、语言/视频能力与租卡 GPU profile；
-- raw-frame count/resolution/native image-vs-video API、多个已观察 segments 如何打包；
-- Top-100 candidate serialization/context budget 和 candidate-marker scoring head；
-- Observation State dataset size、variant proportions、hard negatives 和 target-injection firewall；
-- LoRA/QLoRA modules、quantization、loss weights、validation metrics 和 checkpoint selection；
-- MLLM score artifact、cost/replay 与 StopPolicy calibration。
+- exact Qwen3-VL-8B-Instruct revision、processor、license、context limit 和租卡/distributed profile；
+- 100 个 candidate special tokens 的命名、tokenizer/LM-head 初始化、position shuffle 和 score artifact schema；
+- Top-100 compact text 字段、长度上限、SASRec base/rank 数值特征注入和 packed context budget；
+- eight-bin frames 的 resolution/native image-vs-video API、多个累计 Evidence 的分组/顺序/caching/context cap；
+- Observation State dataset size、variant proportions、hard negatives、soft labels 和 target-injection firewall；
+- listwise CE、prior consistency、mismatch/shuffle、可选 RankNet/distillation 的 loss weights；
+- candidate-token logits 与 SASRec prior 的 exact fusion/calibration、validation metrics 和 checkpoint selection；
+- MLLM score artifact、per-step cost/replay 与最多三轮 StopPolicy compatibility。
 
 ### P4-07 Decision Record
 
 ```text
 Decision ID: P4-07
 Status: Pending
-Decision: TBD
-Rationale: TBD
-Alternatives considered: TBD
-Affected schemas/interfaces: TBD
-Affected docs/tests: TBD
-Deferred follow-up: TBD
-Confirmed by: TBD
-Date: TBD
+Decision: Confirmed sub-scope: Qwen3-VL-8B-Instruct packed listwise mainline with ZipRerank-style single-token candidate logits; initialize from original Qwen checkpoint and train full parameters. ZipRerank checkpoint/QI-EI are not mainline; Qwen3-VL-Reranker-8B is pointwise baseline. Gate remains open for token schema, data, loss, fusion, calibration and runtime details.
+Rationale: One packed native-frame forward preserves full Top-100 competition while avoiding 100 pointwise MLLM encodes and autoregressive ranking generation. Segment Selector already supplies the dominant visual pruning boundary.
+Alternatives considered: Qwen3-VL-Reranker-8B pointwise scoring; candidate-marker hidden-state MLP; extra Global Listwise Transformer; ZipRerank checkpoint warm-start; QI-EI patch pruning.
+Affected schemas/interfaces: ScoreUpdater config/artifact identity, candidate serialization/tokenizer, MLLM score artifact, ObservationState dataset, cost/replay metadata.
+Affected docs/tests: README, docs/07, docs/10, active engineering spec, implementation roadmap; future candidate-token/permutation/no-generation/full-recompute tests.
+Resolved follow-up: exact model family, packed-vs-pointwise direction, non-generative output family, base-checkpoint initialization and full-parameter mainline.
+Deferred follow-up: exact revision/token schema/frame packing/data/loss/prior fusion/calibration; QI-EI/warm-start/LoRA/joint/RL ablations.
+Confirmed by: User (model/output/initialization sub-scope)
+Date: 2026-08-08
 ```
 
 ---
@@ -1339,12 +1345,12 @@ Date: TBD
 | P4-ARCH-02 | ≤1B Selector + native-frame ~8B MLLM Reranker | Confirmed |
 | P4-05 | eight-bin selected raw frames；Chinese-CLIP payload superseded | Confirmed, amended |
 | P4-06 | raw-frame Evidence、typed failure、public refs | Confirmed, amended |
-| P4-07 | native-frame MLLM Candidate Reranker | Pending |
+| P4-07 | Qwen3-VL-8B-Instruct packed listwise Candidate Reranker | In discussion — model/output locked |
 | P4-08 | runtime/budget/cache/cost/replay | Pending |
 | P4-09 | evaluation/tests/DoD | Pending |
 | P4-XG-01 | cross-gate audit and implementation authorization | Pending |
 
-下一项：确认 P4-07 exact native-frame MLLM model、scoring head 和 Observation State training data。
+下一项：确认 P4-07 100-token scoring schema、packed input/context、Observation State training data、loss 和 SASRec fusion。
 
 ---
 

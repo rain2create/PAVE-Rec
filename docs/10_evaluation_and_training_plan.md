@@ -48,16 +48,19 @@ stable / emerging / fading update
 - selected raw-frame `SegmentPerceiver` bundle/refs
 - balanced split-safe Observation State dataset
 - Top-100 compact candidate serialization 与 acquisition Query/Memory context
-- native-frame MLLM `ScoreUpdater` adapter、candidate scoring head 和 score artifacts
+- `Qwen3-VL-8B-Instruct` packed `ScoreUpdater` adapter、100 candidate-token logits 和 score artifacts
 - No-Evidence、target/non-target、multi-item/segment、mismatch/shuffle/mask/permutation states
 - score/stop compatibility and Selector/MLLM perception-cost artifacts
 
 ### Stage 5 — Train and Freeze Native-frame MLLM Reranker
 
-- 从 7—9B class shortlist 中锁定 exact model/revision/processor/license；
-- 第一版使用 LoRA/QLoRA + shared candidate scoring head，不生成 score JSON；
+- 锁定 `Qwen3-VL-8B-Instruct` exact revision/processor/license，并定义 100 个专用 candidate tokens；
+- 从原始 Qwen checkpoint 做 full-parameter recommendation ranking training；ZipRerank checkpoint warm-start、
+  LoRA/QLoRA 和 vision-freeze 只作消融；
+- 一次 packed forward 后在 final scoring position gather 100 candidate-token logits，不生成 ranking 文本/score JSON；
 - primary listwise next-item loss + no-evidence prior consistency + mask/mismatch objectives；
-- 在 validation 上确认相对 SASRec、No-Evidence 和 Small-latent comparators 的有效稳定提升；
+- 在 validation 上确认相对 SASRec、No-Evidence、pointwise `Qwen3-VL-Reranker-8B` 和 Small-latent comparators
+  的有效稳定提升；
 - 冻结 exact Reranker checkpoint，作为后续 Selector utility teacher。
 
 ### Stage 6 — Build Counterfactual Segment-Selector Data
@@ -229,8 +232,9 @@ Selector visual-compression axis
 MLLM Reranker frame/context axis
 - selected raw-frame count (4/8/16/32), resolution and native image/video API
 - multiple observed-segment packing and Top-100 candidate context budget
-- 3B/8B/larger scale、LoRA/QLoRA/full-tune and vision freeze
-- scoring-head/residual calibration and text-only/Small-latent comparators
+- 100 candidate-token schema、candidate shuffle、single-token logits vs pointwise/chunked scoring
+- 3B/8B/larger scale、full-tune vs LoRA/QLoRA/vision freeze、ZipRerank checkpoint warm-start
+- SASRec residual calibration、QI-EI optional pruning and text-only/Small-latent comparators
 ```
 
 Selector 不得把最多数千 raw images 拼进一个全局语言上下文；先在 segment 内编码/压缩，再只让 global scorer

@@ -2,7 +2,7 @@
 # MLLM 文本证据对比支线
 
 > Architecture amendment (2026-08-07): P4-ARCH-02 主线由 `SegmentPerceiver` 发布 selected raw-frame Evidence，
-> 再由约 8B native-frame MLLM `ScoreUpdater` 通过 scoring head 直接输出 Top-100 logits。本文保留的
+> 再由 `Qwen3-VL-8B-Instruct` packed `ScoreUpdater` 在最终位置直接读取 100 个 candidate-token logits。本文保留的
 > structured-text Evidence + generative/token-ranking LLM 路径只属于 Phase 6 representation/explanation comparator；
 > 它不是主线 Reranker 的实现方式。公共 Protocol、failure、artifact 和安全边界仍可复用。
 
@@ -141,7 +141,7 @@ Return structured JSON.
 ```
 
 Structured-text 对比支线先生成文本 Evidence，再由独立 LLM 对候选集合排序。Phase 4 主线则直接使用
-native-frame MLLM scoring head，不经过本文的文本 Evidence schema；Phase 1 mock runtime 仍不依赖真实模型。
+native-frame MLLM candidate-token logits，不经过本文的文本 Evidence schema；Phase 1 mock runtime 仍不依赖真实模型。
 
 ---
 

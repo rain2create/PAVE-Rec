@@ -12,8 +12,8 @@
 3. 检查当前推荐状态 `Recommendation State`，判断当前排序还缺什么信息。
 4. P4 先用 Query-relevance bootstrap，P5 再由 ≤1B 多模态 Segment Selector 对全部 eligible segments 预测 expected gain。
 5. 只对最终选择的片段发布 canonical raw-frame Evidence。
-6. 由约 8B native-frame MLLM Candidate Reranker 读取 SASRec prior、Memory、Top-100 compact candidates 和已观察原始帧。
-7. MLLM 通过 candidate scoring head 对整个候选集合输出数值 logits，不生成自由文本分数。
+6. 由 `Qwen3-VL-8B-Instruct` Listwise Candidate Reranker 一次读取 SASRec prior、Memory、Top-100 compact candidates 和已观察原始帧。
+7. MLLM 参考 ZipRerank 的 single-token scoring，在最终位置直接读取 100 个 candidate-token logits，不生成自由文本排序或 JSON 分数。
 8. 重复上述过程，直到排序已经足够确定，或者感知预算耗尽。
 
 整体核心 loop：
@@ -87,9 +87,11 @@ Expensive path 包括：
 Selected Raw-frame Evidence reference
 ```
 
-约 8B native-frame MLLM Candidate Reranker 实现既有 `ScoreUpdater`，从固定 SASRec base scores 与完整当前
-EvidenceState 纯函数式重算全部候选分数。它使用 candidate marker hidden states + shared scalar head，不通过
-自然语言/JSON 生成数字。Small latent/text-only Reranker 作为容量与成本对比。
+`Qwen3-VL-8B-Instruct` Listwise Candidate Reranker 实现既有 `ScoreUpdater`，从固定 SASRec base scores 与完整
+当前 EvidenceState 纯函数式重算全部候选分数。它将 Top-100 紧凑候选和累计 selected-frame Evidence packed
+到一次前向，在最终 scoring position 直接 gather 100 个专用 candidate-token logits；不生成自然语言/JSON
+数字，也不对 Top-100 做 100 次 pointwise MLLM 调用。`Qwen3-VL-Reranker-8B` pointwise、Small latent 和
+text-only Reranker 作为容量、结构与成本对比。
 
 训练依赖顺序固定为：先训练并冻结 Reranker，再产生 counterfactual gain labels 和训练 Selector；第一版不联合训练。
 
@@ -475,7 +477,7 @@ loop 内执行切分或批量特征提取。Fixture invocation 只用于复现 P
 - P6 calibration/alternative aggregation and later learned Information Need beyond the confirmed P4-03 baseline
 - exact ≤1B Selector model/vision tower/token compression architecture
 - expected recommendation gain label
-- exact 7—9B MLLM/revision/scoring-head/LoRA/context architecture
+- exact Qwen3-VL-8B-Instruct revision/processor、100-token scoring schema、packed context 和 full-tune recipe
 - counterfactual label sampling and later alternating/joint training
 - whether uncertainty uses margin only or richer uncertainty
 - whether RL is needed after supervised value learning

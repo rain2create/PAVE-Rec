@@ -119,8 +119,8 @@ Failed perception 只进入 ObservationState 和 cost/failure sidecar，不产�
 
 ## 4. Score Update — P4-ARCH-02 confirmed direction
 
-下方 residual/unified 形式作为历史接口解释保留；当前 proposed mainline 是约 8B native-frame MLLM
-Candidate Reranker + shared scalar scoring head。
+下方 residual/unified 形式作为历史接口解释保留；当前 proposed mainline 是
+`Qwen3-VL-8B-Instruct` packed native-frame Listwise Candidate Reranker + single-token candidate logits。
 
 ### Option A — Residual Update
 
@@ -172,26 +172,27 @@ new score
 ### Active native-frame MLLM direction
 
 ```text
-SASRec user/prior + Dynamic Memory
+Dynamic Memory + current Information Need
 + Top-100 compact candidate metadata
++ initial SASRec prior/rank side features
 + action-ordered observed raw-frame Evidence
 + acquisition Query/step
-        ↓
-7—9B native-frame MLLM
-        ↓
-candidate marker hidden states
-        ↓
-shared scalar scoring head
+        ↓ one packed forward
+Qwen3-VL-8B-Instruct
+        ↓ final scoring position
+gather 100 dedicated candidate-token vocabulary logits
         ↓
 100 numeric logits
 ```
 
 - MLLM 只观看已选择/观察 segments，不观看 Top-100 全部候选视频；
-- 输出是 scoring head tensors，不通过自然语言/JSON 生成数字；
+- 输出是 final-position candidate-token logits，不生成完整 ranking、自然语言或 JSON 数字；
 - Candidate serialization 在训练中随机化并显式提供 original rank/identity；
 - 首个 baseline 保留 initial SASRec prior，并从 initial prior + full EvidenceState 纯函数式重算；
 - No-Evidence state 必须接近 SASRec prior；mismatched/shuffled frame-query pairs 用作训练/诊断；
-- exact model、native frame packing、LoRA/QLoRA modules、loss、context 和 calibration 由 P4-07 确认。
+- 主初始化使用原始 Qwen checkpoint 并 full-parameter training；ZipRerank checkpoint、QI-EI、LoRA/QLoRA 和
+  vision-freeze 只作 P6 ablation；exact revision、token schema、native frame packing、loss、context 和 calibration
+  仍由 P4-07 完成确认。
 
 ---
 
@@ -225,9 +226,9 @@ P1 deterministic loop 只要求：
 MockScoreUpdater
 ```
 
-P4-ARCH-02 已确认主线使用 native-frame MLLM Candidate Reranker。P4-07 仍需确认 exact model/revision、
-candidate scoring head、Observation State training data、LoRA/QLoRA、loss、score calibration、未观察 item prior
-与 StopPolicy compatibility。无论具体模型如何，每轮必须从固定 initial SASRec prior + 完整当前
+P4-ARCH-02/P4-07 已锁定 `Qwen3-VL-8B-Instruct` packed listwise + candidate-token logits 主线。P4-07 仍需确认
+exact revision/processor、100-token schema、Observation State training data、full-tune recipe、loss、score calibration、
+未观察 item prior 与 StopPolicy compatibility。无论具体细节如何，每轮必须从固定 initial SASRec prior + 完整当前
 EvidenceState 重算全部 candidates，不能递归累计 previous scores。
 
 ---
@@ -268,10 +269,10 @@ SASRec prior
 
 ## 8. TBD
 
-- P4-07 exact 7—9B MLLM/revision/license/GPU profile
+- P4-07 exact Qwen3-VL-8B-Instruct revision/processor/license/GPU-distributed profile
 - native frame count/resolution/packing and multiple-Evidence context budget
-- candidate-marker scoring head and prior-preserving score contract
+- 100 candidate-token vocabulary/logit schema and prior-preserving score contract
 - Observation State data proportions、hard negatives and training targets
-- LoRA/QLoRA/vision-freeze modules and loss/calibration
+- full-parameter schedule、loss/distillation weights and calibration
 - whether evidence changes only the selected item's score or all candidates
-- P6 Small-latent/3B/8B/full-tune and joint-training comparators
+- P6 pointwise Qwen3-VL-Reranker、ZipRerank warm-start/QI-EI、Small-latent/scale/tuning/joint comparators

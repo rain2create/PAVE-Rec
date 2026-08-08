@@ -6,7 +6,7 @@
 > 当前核心决策：
 >
 > - **主线 Selector**：≤1B 判别式多模态 Segment Selector 使用自己缓存的低清多帧 compact tokens，对全部 eligible segments 直接输出 expected value，不使用独立 CLIP shortlist。
-> - **主线 Reranker**：最终选择的 segment 发布 raw-frame Evidence；约 8B native-frame MLLM 通过 candidate scoring head 输出 Top-100 logits，不生成自由文本分数。
+> - **主线 Reranker**：最终选择的 segment 发布 raw-frame Evidence；`Qwen3-VL-8B-Instruct` 将 Top-100 compact candidates 与累计 Evidence packed 到一次前向，并在最终位置直接读取 100 个 candidate-token logits，不生成自由文本排序。
 > - **训练依赖**：先训练并冻结 MLLM Reranker，再生成 counterfactual gain labels 和训练 Selector；第一版不联合训练。
 > - **对比方法**：P4 Chinese-CLIP Query-relevance、CLIP-shortlist + Selector、Small latent/text-only Reranker 和不同模型规模。
 > - **核心原则**：Selector 决定“值不值得看”，Perceiver 只发布已选原始帧，MLLM Reranker 决定这些 Evidence 如何改变整个候选排序。
@@ -843,23 +843,25 @@ EvidenceBank = {
 
 这是 P4-ARCH-02 的最终重排主模型。
 
-## 11.0 Active 7—9B MLLM Contract
+## 11.0 Active Qwen3-VL-8B Listwise Contract
 
 ```text
-SASRec user/prior + Dynamic Memory
-+ Top-100 compact candidates
+Dynamic Memory + current Information Need
++ Top-100 compact candidates with dedicated candidate tokens
++ initial SASRec prior/rank side features
 + action-ordered selected raw-frame Evidence
 + acquisition Query/step
-    → native-frame 7—9B MLLM
-    → candidate marker hidden states
-    → shared scalar scoring head
+    → one packed Qwen3-VL-8B-Instruct forward
+    → final scoring position
+    → gather 100 candidate-token vocabulary logits
     → Top-100 numeric logits
 ```
 
-约束：只观看已观察 segments；不观看全部候选视频；不生成 JSON/自然语言数字；输出覆盖全部候选；训练时
-随机 candidate serialization 并提供显式 identity/rank；每轮从 initial SASRec prior + full current EvidenceState
-纯函数式重算。第一版优先 LoRA/QLoRA，listwise CE + no-evidence prior consistency + mask/mismatch objectives。
-Exact model/revision/context/native frame packing/scoring head 由 P4-07 确认。
+约束：只观看已观察 segments；不观看全部候选视频；不生成完整 ranking、JSON 或自然语言数字；输出覆盖全部
+候选；训练时随机 candidate serialization，并通过 100 个专用 candidate tokens 与显式 identity/rank 保持映射；
+每轮从 initial SASRec prior + full current EvidenceState 纯函数式重算。主初始化使用原始 Qwen checkpoint，第一版
+做 full-parameter training；ZipRerank checkpoint/QI-EI、LoRA/QLoRA 和 vision-freeze 只作消融。Exact revision、
+token schema、context/native frame packing、loss 和 prior calibration 由 P4-07 完成确认。
 
 ## 11.H Historical Small Candidate Transformer Comparator
 
@@ -1172,8 +1174,9 @@ observed = 1
 
 这里的 non-target 只表示该样本的真实 next item 不是它，不代表用户明确 dislike 该视频。Observation sampler 还必须平衡候选 rank、evidence count 与 target/non-target 的被观察概率，避免模型把 selector identity 当标签。
 
-MLLM candidate scoring head 不得依赖候选序列化位置偷学 SASRec rank：训练时随机化 candidate entries 的物理
-顺序，同时提供显式 identity/rank feature；验证时增加 permutation-consistency 测试。
+Candidate-token logits 不得依赖候选序列化位置偷学 SASRec rank：训练时随机化 candidate entries 的物理顺序，
+candidate token 只标识当前 list position，同时提供显式 identity/rank feature；验证时增加
+permutation-consistency 测试。
 
 ## 14.3 必做 Sanity Checks
 
@@ -1365,7 +1368,7 @@ build state and Information Need
 → ≤1B Selector batch-scores all segments（no external CLIP shortlist）
 → select global argmax
 → publish canonical selected raw-frame Evidence
-→ ~8B native-frame MLLM scoring head reranks Top-100
+→ one packed Qwen3-VL-8B-Instruct forward gathers Top-100 candidate-token logits
 → rebuild state and stop-or-repeat
 ```
 
@@ -1610,7 +1613,7 @@ SFT：
 | 维度 | Native-frame ~8B MLLM | Small latent Reranker | Structured-text LLM |
 |---|---|---|---|
 | Segment 表示 | selected raw frames / native vision tokens | Chinese-CLIP/video tokens | MLLM text Evidence |
-| 排序器 | MLLM + scalar scoring head | 小型 Candidate Transformer | LLM/token ranking |
+| 排序器 | Qwen3-VL + final-position candidate-token logits | 小型 Candidate Transformer | LLM/token ranking |
 | 数值输出 | direct tensor logits | direct tensor logits | token probability / structured output |
 | 高层语义推理 | 强 | 中等 | 强 |
 | 推理成本 | 高 | 低 | 高 |
@@ -1663,9 +1666,10 @@ H. Oracle Segment under same budget                ← Selection upper bound
 
 ## 20.4 Reranker 消融
 
-- Candidate-marker listwise head vs independent/chunked scoring；
+- ZipRerank-style candidate-token logits vs candidate-marker MLP vs independent/chunked scoring；
 - Native image vs video API and multiple-Evidence packing；
-- 3B/8B/larger scale、LoRA/QLoRA/full tune；
+- Qwen base vs ZipRerank warm-start、3B/8B/larger scale、full tune vs LoRA/QLoRA/vision freeze；
+- QI-EI patch pruning only when accumulated Evidence tokens become a measured bottleneck；
 - Remove SASRec Prior；
 - Remove Base Consistency；
 - Remove observation balancing；
@@ -1804,8 +1808,8 @@ class SegmentValueTrainingExample:
 3. Segment 切分与 selected raw-frame bundle；
 4. Native-frame MLLM input/candidate serialization；
 5. Observation State Sampler；
-6. 7—9B MLLM + candidate scoring head；
-7. LoRA/QLoRA listwise next-item 训练并冻结；
+6. Qwen3-VL-8B-Instruct + 100 candidate-token single-step scoring；
+7. full-parameter listwise next-item 训练并冻结；
 8. Zero / Shuffled Evidence sanity check。
 
 ## Implementation Tier B：形成完整主线
@@ -1909,8 +1913,8 @@ class SegmentValueTrainingExample:
 > 首先由 SASRec 基于用户行为历史生成 Top-100 先验，Dynamic Memory 与 Information Need 表达当前偏好缺口；
 > 随后，≤1B 多模态 Segment Selector 使用自己缓存的低清多帧 compact tokens，对全部 eligible segments 预测
 > expected recommendation gain，而不依赖独立 CLIP shortlist。系统只为最高价值 segment 发布 canonical 原始帧，
-> 约 8B native-frame MLLM 通过 candidate scoring head 读取当前全部已观察 Evidence，并对 Top-100 输出数值
-> logits。该过程持续迭代，直至 Top-1 足够稳定、剩余 segment 价值低于成本或预算耗尽。
+> `Qwen3-VL-8B-Instruct` 通过一次 packed forward 读取当前全部已观察 Evidence，并在最终 scoring position
+> 直接读取 100 个 candidate-token logits。该过程持续迭代，直至 Top-1 足够稳定、剩余 segment 价值低于成本或预算耗尽。
 
 一句话版本：
 
@@ -1925,7 +1929,7 @@ class SegmentValueTrainingExample:
 
 # 26. 当前明确结论
 
-1. **主线使用 ≤1B Multimodal Segment Selector + 约 8B native-frame MLLM Candidate Reranker。**
+1. **主线使用 ≤1B Multimodal Segment Selector + `Qwen3-VL-8B-Instruct` packed Listwise Candidate Reranker。**
 2. Proposed Selector 不使用独立 CLIP shortlist，并对全部 eligible segments 输出 value。
 3. 每轮只为一个被选 Item-Segment 发布 raw-frame Evidence，但 Reranker 输入全体候选 compact state。
 4. Reranker 的主 label 是 Ground Truth Next Item，不需要 Segment 人工标签。
@@ -1933,8 +1937,9 @@ class SegmentValueTrainingExample:
 6. Selector label 来自冻结 Reranker 后的观察前后推荐收益差，训练时分开保存 gain 与 cost。
 7. 在线顺序是 Selector → Reranker；训练依赖顺序是 Reranker → labels → Selector。
 8. 第一版不联合训练；alternating/distillation/joint/RL 属于 P6/P7。
-9. MLLM 通过 scoring head 输出 tensors，不生成自由文本/JSON scores。
-10. Small latent/text-only Reranker、Chinese-CLIP relevance 和 CLIP-shortlist + Selector 是主要对比。
+9. MLLM 在 final scoring position 直接读取 100 个 candidate-token logits，不生成完整 ranking、自由文本或 JSON scores。
+10. Pointwise `Qwen3-VL-Reranker-8B`、ZipRerank warm-start/QI-EI、Small latent/text-only Reranker、
+    Chinese-CLIP relevance 和 CLIP-shortlist + Selector 是主要对比。
 11. SASRec 粗召回不消费 Dynamic Memory；Memory 在 Information Need、Selector 和 MLLM Reranker 中使用。
 12. validation/test 不注入 target；conditional reranking 与 end-to-end retrieval 必须明确区分。
 13. All-Segment 是 full-information reference，同预算 Oracle Segment 才是 selection upper bound。
